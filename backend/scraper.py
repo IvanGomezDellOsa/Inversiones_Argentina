@@ -25,13 +25,13 @@ def scrapear_apify():
     run_input = {
         "searchTerms": [query],
         "sort": "Latest",
-        "maxItems": 100,
+        "max_posts": 50,
     }
 
     logger.info(f"Lanzando actor Apify con query: {query}")
     
     try:
-        run = client.actor("quacker/twitter-scraper").call(run_input=run_input)
+        run = client.actor("danek/twitter-scraper-ppr").call(run_input=run_input)
         dataset_id = run.get("defaultDatasetId")
         if not dataset_id:
             logger.error("No se obtuvo dataset ID")
@@ -41,8 +41,8 @@ def scrapear_apify():
         
         todos_los_tweets = []
         for item in client.dataset(dataset_id).iterate_items():
-            texto = item.get("fullText")
-            fecha_iso = item.get("createdAt") 
+            texto = item.get("fullText") or item.get("full_text") or item.get("text")
+            fecha_iso = item.get("createdAt") or item.get("created_at") 
             
             if texto and fecha_iso:
                 try:
