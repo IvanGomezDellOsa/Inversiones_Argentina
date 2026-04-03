@@ -1,67 +1,29 @@
-# inversionesargentina.com.ar 🚧 (proyecto en curso)
+# Inversiones Argentina 🇦🇷
 
-Agregador web de inversiones privadas anunciadas o realizadas en Argentina.
+Agregador web automatizado que recopila y lista inversiones privadas realizadas o anunciadas en Argentina.
 
-**Estado:** en desarrollo activo. La arquitectura está definida, el backend en construcción.
+Este sistema está compuesto de tres partes principales:
+1. **Scraping automatizado** (vía GitHub Actions y la API de Apify) para traer información de fuentes de Twitter.
+2. **Post-procesamiento y almacenamiento** con IA (Google Gemini 2.5 Flash API + Grounding) para estructurar datos, generar embeddings, detectar inversiones únicas y guardarlas en **Neon PostgreSQL con pgvector**.
+3. **Frontend Vercel + Backend FastAPI**, para exponer el JSON unificado de forma simple hacia un frontend construido en web moderna.
 
----
+## Requisitos previos
 
-## ¿Qué es esto?
+* Python 3.11+
+* Cuenta en **Neon** para PostgreSQL.
+* Cuenta en **Apify** y token para usar el scraper lite de Twitter (`APIFY_API_TOKEN`).
+* Cuenta en **Google AI Studio** para usar la API de **Gemini** (`GEMINI_API_KEY`).
 
-Un sitio que centraliza anuncios de inversión privada en Argentina en un formato limpio y estandarizado. Ejemplo de lo que vas a encontrar:
+## Estructura Local (Setup Inicial)
 
-> *Sinteplast construye una nueva planta industrial en Ezeiza. Inversión: u$s 12 millones. Prevé incorporar 400 empleados al plantel actual.*
-
-Los datos se actualizan semanalmente de forma automática combinando dos fuentes: búsqueda en Google vía Gemini API y tweets de cuentas curadoras especializadas.
-
----
-
-## Stack
-
-| Capa | Tecnología |
-|---|---|
-| Frontend | v0 + Vercel |
-| Backend | Python + FastAPI |
-| Base de datos | Neon PostgreSQL + pgvector |
-| Ingesta | Gemini API (Grounding with Google Search) |
-| Scheduler | GitHub Actions (cron semanal) |
-| Embeddings | text-embedding-004 (Google) |
+1. Renombrar el archivo `.env.example` a `.env` y rellenar las credenciales.
+2. Instalar el entorno backend:
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   ```
+3. Ejecutar inicialización de la tabla SQL (`schema.sql`) dentro de tu proyecto en Neon.
 
 ---
 
-## Estructura del repositorio
-
-```
-Inversiones_Argentina/
-├── frontend/        # Proyecto v0 exportado
-├── backend/         # Python: ingesta, API, embeddings
-└── .github/
-    └── workflows/   # GitHub Actions cron semanal
-```
-
----
-
-## Cómo funciona
-
-1. Cada lunes, GitHub Actions dispara el script de ingesta.
-2. El script scrapea tweets filtrados de Nitter y los combina con búsquedas en Google vía Gemini API.
-3. Gemini devuelve un array JSON estructurado con los anuncios de inversión de la semana.
-4. Cada registro se embeddea y se compara semánticamente contra la base de datos para evitar duplicados.
-5. Los registros nuevos se insertan en Neon PostgreSQL.
-6. El frontend consume la API REST y muestra las cards actualizadas.
-
----
-
-## Costo operativo
-
-$0. Todo corre en capas gratuitas de Gemini API, Neon, Vercel y GitHub Actions.
-
----
-
-## Autor
-
-**Iván Gómez Dell'Osa**
-
-- Email: [ivangomezdellosa@gmail.com](mailto:ivangomezdellosa@gmail.com)
-- LinkedIn: [linkedin.com/in/ivangomezdellosa](https://linkedin.com/in/ivangomezdellosa)
-- GitHub: [IvanGomezDellOsa](https://github.com/IvanGomezDellOsa)
+🏗️ *Proyecto en fase de construcción.*
