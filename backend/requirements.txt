@@ -1,7 +1,8 @@
 fastapi
 uvicorn
 psycopg2-binary
-apify-client
+beautifulsoup4
+requests
 google-genai
 mangum
 python-dotenv

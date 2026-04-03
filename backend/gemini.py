@@ -13,6 +13,14 @@ load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+_client = None
+
+def get_client():
+    global _client
+    if _client is None and GEMINI_API_KEY:
+        _client = genai.Client(api_key=GEMINI_API_KEY)
+    return _client
+
 def construir_prompt(tweets_lista):
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
     fecha_hace_7_dias = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -62,7 +70,9 @@ def procesar_con_gemini(tweets_lista):
         logger.error("Falta la variable de entorno GEMINI_API_KEY")
         return []
         
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = get_client()
+    if not client:
+        return []
     prompt = construir_prompt(tweets_lista)
 
     logger.info("Enviando prompt a Gemini 2.5 Flash con Grounding activado...")

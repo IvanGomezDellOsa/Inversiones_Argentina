@@ -1,64 +1,92 @@
-import os
 import logging
-from datetime import datetime, timedelta, timezone
-from apify_client import ApifyClient
-from dotenv import load_dotenv
+import locale
+import requests
+import urllib.parse
+from datetime import datetime, timedelta
+from bs4 import BeautifulSoup
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+NITTER_INSTANCES = [
+    "https://nitter.net",
+    "https://nitter.poast.org",
+    "https://nitter.cz",
+    "https://xcancel.com"
+]
 
-APIFY_TOKEN = os.getenv("APIFY_API_TOKEN")
+def parsear_tweets(html_content):
+    tweets_filtrados = []
+    limite_fecha = datetime.now() - timedelta(days=7)
+    
+    soup = BeautifulSoup(html_content, 'html.parser')
+    items = soup.select('.timeline-item')
+    
+    for item in items:
+        # Extraer texto (puede tener quote/cita)
+        content_div = item.select_one('.tweet-content')
+        quote_div = item.select_one('.quote .tweet-content')
+        
+        texto_principal = content_div.text.strip() if content_div else ""
+        texto_cita = quote_div.text.strip() if quote_div else ""
+        
+        texto_final = texto_principal
+        if texto_cita:
+            texto_final += f" | Cita: {texto_cita}"
+            
+        if not texto_final:
+            continue
+            
+        # Extraer fecha
+        date_a = item.select_one('.tweet-date a')
+        if not date_a or not date_a.get('title'):
+            continue
+            
+        # Nitter format: title="Apr 2, 2026 · 12:45 PM UTC"
+        fecha_str_raw = date_a['title'].split('·')[0].strip() # "Apr 2, 2026"
+        try:
+            locale.setlocale(locale.LC_TIME, 'C')
+            fecha_obj = datetime.strptime(fecha_str_raw, "%b %d, %Y")
+            if fecha_obj >= limite_fecha:
+                fecha_formateada = fecha_obj.strftime("%Y-%m-%d")
+                tweets_filtrados.append(f"[{fecha_formateada}] {texto_final}")
+        except ValueError:
+            logger.warning(f"Error parseando fecha nitter: {fecha_str_raw}")
+            continue
+            
+    return tweets_filtrados
 
-def scrapear_apify():
-    if not APIFY_TOKEN:
-        logger.error("Falta la variable de entorno APIFY_API_TOKEN")
-        return []
-
-    client = ApifyClient(APIFY_TOKEN)
-
-    # from: y since: delegan el filtrado a Twitter
-    fecha_limite = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
-    query = f'("Más inversión" from:zubel_ok) OR ("MEGA INVERSIÓN EN ARGENTINA: " from:laderechadiario) since:{fecha_limite}'
-
-    run_input = {
-        "searchTerms": [query],
-        "sort": "Latest",
-        "max_posts": 50,
+def scrapear_nitter():
+    query_zubel = '"Más inversión"'
+    encoded_q = urllib.parse.quote(query_zubel)
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9"
     }
 
-    logger.info(f"Lanzando actor Apify con query: {query}")
-    
-    try:
-        run = client.actor("danek/twitter-scraper-ppr").call(run_input=run_input)
-        dataset_id = run.get("defaultDatasetId")
-        if not dataset_id:
-            logger.error("No se obtuvo dataset ID")
-            return []
-            
-        logger.info("Recuperando resultados del dataset")
-        
-        todos_los_tweets = []
-        for item in client.dataset(dataset_id).iterate_items():
-            texto = item.get("fullText") or item.get("full_text") or item.get("text")
-            fecha_iso = item.get("createdAt") or item.get("created_at") 
-            
-            if texto and fecha_iso:
-                try:
-                    fecha_obj = datetime.fromisoformat(fecha_iso.replace("Z", "+00:00")).replace(tzinfo=None)
-                    fecha_str = fecha_obj.strftime("%Y-%m-%d")
-                    todos_los_tweets.append(f"[{fecha_str}] {texto}")
-                except Exception as e:
-                    logger.warning(f"Error procesando fecha {fecha_iso}: {e}")
-                    
-        return todos_los_tweets
+    todos_los_tweets = []
 
-    except Exception as e:
-        logger.error(f"Falla durante la ejecución en Apify: {e}")
-        return []
+    for instancia in NITTER_INSTANCES:
+        url = f"{instancia}/zubel_ok/search?f=tweets&q={encoded_q}"
+        logger.info(f"Lanzando scraper Nitter contra: {url}")
+        
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                logger.info(f"¡Éxito! Nitter respondió en {instancia}")
+                tweets_extraidos = parsear_tweets(response.text)
+                todos_los_tweets.extend(tweets_extraidos)
+                break # Si una instancia funcionó, no seguimos golpeando a las demás
+            else:
+                logger.warning(f"Instancia {instancia} devolvió HTTP {response.status_code}")
+        except Exception as e:
+            logger.warning(f"Instancia {instancia} no disponible (Error DNS/Timeout)")
+            continue
+
+    return todos_los_tweets
 
 if __name__ == "__main__":
-    resultado = scrapear_apify()
+    logging.basicConfig(level=logging.INFO)
+    resultado = scrapear_nitter()
     for t in resultado:
         print(t)

@@ -1,6 +1,6 @@
 import logging
-from datetime import datetime, timedelta
-from scraper import scrapear_apify
+from datetime import datetime
+from scraper import scrapear_nitter
 from gemini import procesar_con_gemini
 from embeddings import generar_embedding
 from database import get_db_connection, es_duplicado, insertar_inversion
@@ -26,12 +26,7 @@ def validar_registro(registro):
     fecha_str = registro.get("fecha_anuncio")
     if fecha_str:
         try:
-            fecha = datetime.strptime(fecha_str, "%Y-%m-%d")
-            limite = datetime.today() - timedelta(days=10)
-            # Límite estricto temporal deshabilitado.
-            # if fecha < limite:
-            #     logger.warning(f"Registro descartado por fecha antigua: {fecha_str}")
-            #     return False
+            datetime.strptime(fecha_str, "%Y-%m-%d")
         except ValueError:
             logger.warning(f"Fecha inválida, seteando a None: {fecha_str}")
             registro["fecha_anuncio"] = None
@@ -45,11 +40,11 @@ def validar_registro(registro):
 def run_ingesta():
     logger.info("Iniciando pipeline de ingesta...")
     
-    logger.info("Scraping a través de Apify...")
-    tweets = scrapear_apify()
+    logger.info("Scraping a través de Nitter...")
+    tweets = scrapear_nitter()
     
     if not tweets:
-        logger.warning("No se obtuvieron tweets de Apify. Continuando para que Gemini busque exclusivamente en Google.")
+        logger.warning("No se obtuvieron tweets de Nitter. Continuando para que Gemini busque exclusivamente en Google.")
         
     logger.info("Procesando contenido con Gemini (interpreta y busca en Google)...")
     inversiones_crudo = procesar_con_gemini(tweets)
@@ -76,27 +71,28 @@ def run_ingesta():
     nuevas_inserciones = 0
     duplicados = 0
 
-    logger.info("Generando embeddings, desduplicando e insertando...")
-    for inversion in inversiones_validas:
-        texto = f"{inversion['empresa']} {inversion['descripcion']}"
-        logger.info(f" -> Procesando: {inversion['empresa']}")
-        
-        embedding = generar_embedding(texto)
-        
-        if not embedding:
-            logger.error(f"    Fallo al generar embedding para {inversion['empresa']}. Saltando.")
-            continue
+    try:
+        logger.info("Generando embeddings, desduplicando e insertando...")
+        for inversion in inversiones_validas:
+            texto = f"{inversion['empresa']} {inversion['descripcion']}"
+            logger.info(f" -> Procesando: {inversion['empresa']}")
             
-        es_dup = es_duplicado(embedding, conn)
-        if not es_dup:
-            logger.info("    No es duplicado. Insertando...")
-            insertar_inversion(inversion, embedding, conn)
-            nuevas_inserciones += 1
-        else:
-            logger.info("    Registro detectado como ya existente (duplicado por similitud). Omitiendo.")
-            duplicados += 1
+            embedding = generar_embedding(texto)
             
-    conn.close()
+            if not embedding:
+                logger.error(f"    Fallo al generar embedding para {inversion['empresa']}. Saltando.")
+                continue
+                
+            es_dup = es_duplicado(embedding, conn)
+            if not es_dup:
+                logger.info("    No es duplicado. Insertando...")
+                insertar_inversion(inversion, embedding, conn)
+                nuevas_inserciones += 1
+            else:
+                logger.info("    Registro detectado como ya existente (duplicado por similitud). Omitiendo.")
+                duplicados += 1
+    finally:
+        conn.close()
     
     logger.info("====================================")
     logger.info("Pipeline de Ingesta FINALIZADO.")
