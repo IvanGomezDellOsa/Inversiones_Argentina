@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from google import genai
-from google.genai.types import GenerateContentConfig, Tool, GoogleSearch, ThinkingConfig
+from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)

@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from apify_client import ApifyClient
 from dotenv import load_dotenv
 
@@ -18,8 +18,8 @@ def scrapear_apify():
 
     client = ApifyClient(APIFY_TOKEN)
 
-    # Los operadores from: y since: delegan el filtrado al motor de búsqueda de Twitter
-    fecha_limite = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
+    # from: y since: delegan el filtrado a Twitter
+    fecha_limite = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
     query = f'("Más inversión" from:zubel_ok) OR ("MEGA INVERSIÓN EN ARGENTINA: " from:laderechadiario) since:{fecha_limite}'
 
     run_input = {

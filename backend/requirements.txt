@@ -3,3 +3,5 @@ uvicorn
 psycopg2-binary
 apify-client
 google-genai
+mangum
+python-dotenv
