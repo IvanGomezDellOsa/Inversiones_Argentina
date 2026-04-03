@@ -31,7 +31,7 @@ def scrapear_apify():
     logger.info(f"Lanzando actor Apify con query: {query}")
     
     try:
-        run = client.actor("apidojo/twitter-scraper-lite").call(run_input=run_input)
+        run = client.actor("quacker/twitter-scraper").call(run_input=run_input)
         dataset_id = run.get("defaultDatasetId")
         if not dataset_id:
             logger.error("No se obtuvo dataset ID")
