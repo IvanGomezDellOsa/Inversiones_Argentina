@@ -1,0 +1,85 @@
+# Archivo de arquitectura
+inversiones_argentina_arquitectura.md
+
+# Configuración y credenciales
+.env
+.env.local
+.env.*.local
+
+# Dependencias y caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.virtualenv/
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+*.egg-info/
+*.egg
+.installed.cfg
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+
+# Dependencias y artefactos de Frontend
+node_modules/
+.next/
+out/
+.vercel
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Configuraciones de editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Archivos de asistentes de IA
+.gemini/
+.agents/
+.agent/
+_agents/
+_agent/
+.cursor/
+.copilot/
+.aider*
+.continue/
+
+# Archivos de sistema
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+
+# Configuración de Docker
+.dockerignore
+
+# Logs y temporales
+*.log
+tmp/
+temp/
