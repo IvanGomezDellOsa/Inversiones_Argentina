@@ -43,7 +43,7 @@ if __name__ == "__main__":
     vector = generar_embedding(texto_prueba)
     
     if vector:
-        print(f"Embedding generado con éxito. Dimensión: {len(vector)}")
-        print(f"Muestra de valores: {vector[:5]}...")
+        print(f"Dimensión del embedding: {len(vector)}")
+        print(f"Primeros 5 valores: {vector[:5]}")
     else:
-        print("Falló la generación del vector.")
+        print("Error al generar el embedding.")

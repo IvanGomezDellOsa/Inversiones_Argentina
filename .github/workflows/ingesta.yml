@@ -20,8 +20,9 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r backend/requirements.txt
         
-      - name: Ejecutar script de ingesta (Nitter + Gemini + pgvector)
+      - name: Ejecutar script de ingesta (Apify + Gemini + pgvector)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
         run: python backend/ingesta.py

@@ -81,7 +81,7 @@ def procesar_con_gemini(tweets_lista):
             model="gemini-2.5-flash",
             contents=prompt,
             config=GenerateContentConfig(
-                temperature=1.0,
+                temperature=0.1,
                 tools=[Tool(google_search=GoogleSearch())]
             )
         )
@@ -89,7 +89,7 @@ def procesar_con_gemini(tweets_lista):
         texto_crudo = response.text
         logger.info("Respuesta recibida de Gemini")
 
-        # Grounding no admite response_mime_type JSON; se limpia el bloque markdown si lo agrega el modelo
+        # Grounding no admite response_mime_type=JSON; se eliminan bloques markdown si el modelo los agrega
         texto_limpio = texto_crudo.replace("```json", "").replace("```", "").strip()
         
         try:

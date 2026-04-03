@@ -25,7 +25,7 @@ def es_duplicado(nuevo_embedding, conn):
     if not conn:
         return False
     try:
-        # pgvector requiere formato string [val1, val2, ...]
+        # pgvector requiere serialización del vector como string "[v1,v2,...]"
         vector_str = f"[{','.join(map(str, nuevo_embedding))}]"
         
         with conn.cursor() as cursor:

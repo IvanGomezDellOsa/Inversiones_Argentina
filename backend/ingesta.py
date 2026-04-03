@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from scraper import scrapear_nitter
+from scraper import scrapear_twitter
 from gemini import procesar_con_gemini
 from embeddings import generar_embedding
 from database import get_db_connection, es_duplicado, insertar_inversion
@@ -40,11 +40,11 @@ def validar_registro(registro):
 def run_ingesta():
     logger.info("Iniciando pipeline de ingesta...")
     
-    logger.info("Scraping a través de Nitter...")
-    tweets = scrapear_nitter()
+    logger.info("Scraping tweets via Apify (danek/twitter-scraper-ppr)...")
+    tweets = scrapear_twitter()
     
     if not tweets:
-        logger.warning("No se obtuvieron tweets de Nitter. Continuando para que Gemini busque exclusivamente en Google.")
+        logger.warning("No se obtuvieron tweets de Apify. Continuando para que Gemini busque exclusivamente en Google.")
         
     logger.info("Procesando contenido con Gemini (interpreta y busca en Google)...")
     inversiones_crudo = procesar_con_gemini(tweets)
