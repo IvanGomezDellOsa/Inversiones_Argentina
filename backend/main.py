@@ -12,6 +12,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def home():
+    return {"status": "ok", "message": "API de Inversiones Argentina activa"}
+
 @app.get("/inversiones")
 def get_inversiones():
     conn = get_db_connection()
