@@ -26,6 +26,7 @@ venv.bak/
 !package.json
 !vercel.json
 !components.json
+!tsconfig.json
 apify_output.json
 test_apify_*.py
 
