@@ -48,7 +48,9 @@ def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por em
             resultado = [dict(zip(columnas, row)) for row in rows]
             return jsonable_encoder(resultado)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = f"DB Error: {str(e)}"
+        print(error_msg)  # Ver esto en Vercel Logs
+        raise HTTPException(status_code=500, detail=error_msg)
     finally:
         conn.close()
 
