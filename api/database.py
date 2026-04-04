@@ -68,3 +68,37 @@ def insertar_inversion(inversion, embedding, conn):
     except Exception as e:
         logger.error(f"Error insertando inversión: {e}")
         conn.rollback()
+
+def init_db(conn):
+    """Inicializa la base de datos con las tablas y extensiones necesarias."""
+    if not conn:
+        return
+    try:
+        with conn.cursor() as cursor:
+            # Habilitar pgvector
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            
+            # Crear tabla inversiones
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS inversiones (
+                    id            SERIAL PRIMARY KEY,
+                    empresa       TEXT NOT NULL,
+                    descripcion   TEXT NOT NULL,
+                    monto_usd     BIGINT,
+                    fecha_anuncio DATE,
+                    estado        TEXT NOT NULL
+                                  CONSTRAINT chk_inversiones_estado
+                                  CHECK (estado IN ('confirmada', 'anunciada', 'en_evaluacion')),
+                    embedding     VECTOR(768),
+                    created_at    TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+            
+            # Crear índice
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_inversiones_created_at ON inversiones (created_at DESC);")
+            
+        conn.commit()
+        logger.info("Base de datos inicializada correctamente")
+    except Exception as e:
+        logger.error(f"Error inicializando base de datos: {e}")
+        conn.rollback()
