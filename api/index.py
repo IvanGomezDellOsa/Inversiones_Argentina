@@ -14,10 +14,12 @@ app.add_middleware(
 )
 
 @app.get("/api/")
+@app.get("/")
 def home():
     return {"status": "ok", "message": "API de Inversiones Argentina activa"}
 
 @app.get("/api/inversiones")
+@app.get("/inversiones")
 def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por empresa o descripción")):
     conn = get_db_connection()
     if not conn:
@@ -49,3 +51,7 @@ def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por em
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+
+@app.api_route("/{path_name:path}", methods=["GET"])
+def catch_all(path_name: str):
+    return {"error": "Ruta no encontrada by FastAPI", "path_received": path_name}
