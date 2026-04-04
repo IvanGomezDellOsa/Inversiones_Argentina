@@ -13,6 +13,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Cache para saber si ya inicializamos en esta instancia de Vercel
+_db_initialized = False
+
 @app.get("/api/")
 @app.get("/")
 def home():
@@ -21,9 +24,15 @@ def home():
 @app.get("/api/inversiones")
 @app.get("/inversiones")
 def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por empresa o descripción")):
+    global _db_initialized
     conn = get_db_connection()
     if not conn:
         raise HTTPException(status_code=503, detail="Fallo de conexión a la base de datos")
+
+    # Inicialización automática la primera vez que se toca la API
+    if not _db_initialized:
+        init_db(conn)
+        _db_initialized = True
 
     try:
         with conn.cursor() as cursor:
