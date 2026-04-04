@@ -23,6 +23,9 @@ venv.bak/
 # Archivos del scraper
 *.html
 *.json
+!package.json
+!vercel.json
+!components.json
 apify_output.json
 test_apify_*.py
 
