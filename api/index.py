@@ -2,7 +2,8 @@ from fastapi import FastAPI, HTTPException, Query
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
-from database import get_db_connection
+from mangum import Mangum
+from .database import get_db_connection, init_db
 
 app = FastAPI()
 
@@ -29,7 +30,7 @@ def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por em
     if not conn:
         raise HTTPException(status_code=503, detail="Fallo de conexión a la base de datos")
 
-    # Inicialización automática la primera vez que se toca la API
+    # Inicialización automática la primera vez que se toca la API en este worker
     if not _db_initialized:
         init_db(conn)
         _db_initialized = True
@@ -58,11 +59,14 @@ def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por em
             return jsonable_encoder(resultado)
     except Exception as e:
         error_msg = f"DB Error: {str(e)}"
-        print(error_msg)  # Ver esto en Vercel Logs
+        print(error_msg)
         raise HTTPException(status_code=500, detail=error_msg)
     finally:
         conn.close()
 
 @app.api_route("/{path_name:path}", methods=["GET"])
 def catch_all(path_name: str):
-    return {"error": "Ruta no encontrada by FastAPI", "path_received": path_name}
+    return {"error": "Ruta no encontrada", "path_received": path_name}
+
+# Handler para Vercel
+handler = Mangum(app, lifespan="off")
