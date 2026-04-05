@@ -38,12 +38,11 @@ def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por em
     try:
         with conn.cursor() as cursor:
             if q:
-                # Búsqueda case-insensitive en empresa y descripción
                 query = """
                     SELECT empresa, descripcion, monto_usd, fecha_anuncio, estado, created_at
                     FROM inversiones
                     WHERE empresa ILIKE %s OR descripcion ILIKE %s
-                    ORDER BY created_at DESC
+                    ORDER BY fecha_anuncio DESC NULLS LAST, created_at DESC
                 """
                 pattern = f"%{q}%"
                 cursor.execute(query, (pattern, pattern))
@@ -51,7 +50,7 @@ def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por em
                 cursor.execute("""
                     SELECT empresa, descripcion, monto_usd, fecha_anuncio, estado, created_at
                     FROM inversiones
-                    ORDER BY created_at DESC
+                    ORDER BY fecha_anuncio DESC NULLS LAST, created_at DESC
                 """)
             rows = cursor.fetchall()
             columnas = [col.name for col in cursor.description]
