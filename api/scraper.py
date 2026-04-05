@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
 
-# Queries científicas de búsqueda
+# Consultas de búsqueda en Twitter
 SEARCH_QUERIES = [
     "Más inversión 🤝 Más empleo from:zubel_ok",
     "Más inversión Más empleo from:zubel_ok",

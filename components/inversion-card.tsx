@@ -94,7 +94,6 @@ export function InversionCard({ inversion, index }: InversionCardProps) {
               </h3>
             </div>
 
-            {/* Fila de píldoras */}
             <div className="flex flex-wrap gap-2 mb-4">
               <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide ${estadoInfo.className}`}>
                 {estadoInfo.label}
