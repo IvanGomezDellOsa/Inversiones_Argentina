@@ -26,3 +26,4 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
         run: python api/ingesta.py
+ 
