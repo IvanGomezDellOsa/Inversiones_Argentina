@@ -10,11 +10,14 @@ logger = logging.getLogger(__name__)
 
 APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
 
-# Queries de búsqueda directa en Twitter (filtrado server-side en Apify)
-# Esto evita el problema del límite de 20 posts del perfil completo
+# Queries de búsqueda directa en Twitter (redundante y específica: "huella digital")
 SEARCH_QUERIES = [
-    "más inversión from:zubel_ok",
-    "mas inversion from:zubel_ok",
+    "Más inversión 🤝 Más empleo from:zubel_ok",
+    "Más inversión Más empleo from:zubel_ok",
+    "Más inversiones 🤝 Más empleo from:zubel_ok",
+    "inversión from:zubel_ok",
+    "inversion from:zubel_ok",
+    "inversiones from:zubel_ok",
 ]
 
 
@@ -57,7 +60,8 @@ def scrapear_twitter():
         logger.info(f"Buscando en Twitter: '{query}'")
 
         run_input = {
-            "searchTerms": [query],
+            "query": query,
+            "search_type": "Latest",
             "max_posts": 20,
         }
 
