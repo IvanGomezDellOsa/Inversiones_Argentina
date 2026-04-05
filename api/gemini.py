@@ -87,7 +87,7 @@ def procesar_con_gemini(tweets_lista):
         )
 
         texto_crudo = response.text
-        logger.info("Respuesta recibida de Gemini")
+        logger.info(f"Texto crudo de Gemini (primeros 500 chars): {texto_crudo[:500]}")
 
         # Grounding no admite response_mime_type=JSON; se eliminan bloques markdown si el modelo los agrega
         texto_limpio = texto_crudo.replace("```json", "").replace("```", "").strip()
@@ -97,10 +97,14 @@ def procesar_con_gemini(tweets_lista):
             if not isinstance(array_json, list):
                 logger.error("Gemini no devolvió una lista JSON.")
                 return []
+            if len(array_json) == 0:
+                logger.warning("Gemini devolvió un array JSON vacío.")
+                return []
             return array_json
             
         except json.JSONDecodeError as de:
-            logger.error(f"Falla crítica: el output de Gemini no es JSON válido. \nOutput crudo: {texto_crudo}")
+            logger.error(f"JSONDecodeError: {de}")
+            logger.error(f"Texto crudo completo:\n{texto_crudo}")
             return []
             
     except Exception as e:
