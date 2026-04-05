@@ -6,7 +6,6 @@ import { SearchInput } from "./search-input";
 import { InversionesGrid } from "./inversiones-grid";
 import type { Inversion } from "./inversion-card";
 
-// Dejamos el tipo Inversion, pero los quitamos de Mock
 
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -68,10 +67,8 @@ export function InversionesDashboard() {
   return (
     <div className="min-h-screen bg-background">
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-        {/* Implementación de la bandera argentina validada y optimizada vía videoSrc */}
         <HeroSection videoSrc="/bandera-argentina.mp4" />
 
-        {/* Toolbar: Search + Results count */}
         <section className="py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border mb-8">
           <SearchInput
             value={searchQuery}
@@ -86,7 +83,6 @@ export function InversionesDashboard() {
           )}
         </section>
 
-        {/* Timeline */}
         <section aria-label="Cronología de inversiones">
           <h2 className="sr-only">Cronología de inversiones</h2>
           <InversionesGrid

@@ -25,7 +25,7 @@ def es_duplicado(nuevo_embedding, conn):
     if not conn:
         return False
     try:
-        # pgvector requiere serialización del vector como string "[v1,v2,...]"
+        # Serialización para pgvector
         vector_str = f"[{','.join(map(str, nuevo_embedding))}]"
         
         with conn.cursor() as cursor:
@@ -70,15 +70,13 @@ def insertar_inversion(inversion, embedding, conn):
         conn.rollback()
 
 def init_db(conn):
-    """Inicializa la base de datos con las tablas y extensiones necesarias."""
+    # Inicialización de tablas y extensiones
     if not conn:
         return
     try:
         with conn.cursor() as cursor:
-            # Habilitar pgvector
             cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
             
-            # Crear tabla inversiones
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS inversiones (
                     id            SERIAL PRIMARY KEY,
@@ -94,7 +92,6 @@ def init_db(conn):
                 );
             """)
             
-            # Crear índice
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_inversiones_created_at ON inversiones (created_at DESC);")
             
         conn.commit()

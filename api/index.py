@@ -14,7 +14,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Cache para saber si ya inicializamos en esta instancia de Vercel
 _db_initialized = False
 
 @app.get("/api/")
@@ -30,7 +29,7 @@ def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por em
     if not conn:
         raise HTTPException(status_code=503, detail="Fallo de conexión a la base de datos")
 
-    # Inicialización automática la primera vez que se toca la API en este worker
+    # Inicialización de BD en primer acceso
     if not _db_initialized:
         init_db(conn)
         _db_initialized = True
@@ -67,5 +66,4 @@ def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por em
 def catch_all(path_name: str):
     return {"error": "Ruta no encontrada", "path_received": path_name}
 
-# Handler para Vercel
 handler = Mangum(app, lifespan="off")

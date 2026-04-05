@@ -37,7 +37,6 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
       animate="visible"
       className="relative pt-8 pb-10 md:pt-12 md:pb-14"
     >
-      {/* Background gradient with Argentina colors - subtle */}
       <div 
         className="absolute inset-0 -z-10 overflow-hidden"
         aria-hidden="true"
@@ -47,7 +46,6 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
       </div>
 
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
-        {/* Text content */}
         <div className="flex flex-col gap-5 lg:max-w-xl">
           <motion.h1
             variants={itemVariants}
@@ -80,7 +78,6 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
           </motion.div>
         </div>
 
-        {/* Video/Flag section */}
         <motion.div
           variants={itemVariants}
           className="relative w-full lg:w-80 h-48 lg:h-52 rounded-lg overflow-hidden border border-border shadow-sm bg-gradient-to-br from-[#74ACDF] via-white to-[#74ACDF]"
@@ -96,8 +93,8 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
               aria-label="Bandera argentina flameando"
             />
           ) : (
-            /* Placeholder: elegant Argentina flag representation */
             <div className="w-full h-full flex flex-col" aria-label="Bandera de Argentina">
+              {/* Representación visual de bandera (fallback) */}
               <div className="flex-1 bg-[#74ACDF]" />
               <div className="flex-1 bg-white flex items-center justify-center">
                 <svg 
@@ -106,7 +103,6 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
                   aria-hidden="true"
                 >
                   <circle cx="32" cy="32" r="10" fill="currentColor" />
-                  {/* Sun rays */}
                   {[...Array(16)].map((_, i) => (
                     <line
                       key={i}
@@ -125,12 +121,10 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
             </div>
           )}
           
-          {/* Subtle overlay for elegance */}
           <div className="absolute inset-0 bg-gradient-to-t from-background/20 to-transparent pointer-events-none" />
         </motion.div>
       </div>
 
-      {/* Divider */}
       <div className="mt-10 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
     </motion.header>
   );

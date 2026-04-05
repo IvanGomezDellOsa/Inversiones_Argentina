@@ -1,4 +1,5 @@
 "use client";
+import React from "react";
 
 import { motion } from "framer-motion";
 import { InversionCard, type Inversion } from "./inversion-card";

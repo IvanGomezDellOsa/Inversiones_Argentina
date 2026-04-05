@@ -89,7 +89,7 @@ def procesar_con_gemini(tweets_lista):
         texto_crudo = response.text
         logger.info(f"Texto crudo de Gemini (primeros 500 chars): {texto_crudo[:500]}")
 
-        # Grounding no admite response_mime_type=JSON; se eliminan bloques markdown si el modelo los agrega
+        # Limpieza de bloques markdown (Grounding no admite JSON nativo)
         texto_limpio = texto_crudo.replace("```json", "").replace("```", "").strip()
         
         try:

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
 
-# Queries de búsqueda directa en Twitter (redundante y específica: "huella digital")
+# Queries científicas de búsqueda
 SEARCH_QUERIES = [
     "Más inversión 🤝 Más empleo from:zubel_ok",
     "Más inversión Más empleo from:zubel_ok",
@@ -22,7 +22,7 @@ SEARCH_QUERIES = [
 
 
 def _parsear_fecha_twitter(fecha_str):
-    """Parsea el formato de fecha de Twitter: 'Fri Apr 03 15:26:15 +0000 2026'"""
+    # Formato: 'Fri Apr 03 15:26:15 +0000 2026'
     try:
         return datetime.strptime(fecha_str, "%a %b %d %H:%M:%S %z %Y")
     except (ValueError, TypeError):
@@ -30,7 +30,7 @@ def _parsear_fecha_twitter(fecha_str):
 
 
 def _extraer_texto_completo(item):
-    """Extrae el texto completo del tweet, incluyendo citas (quoted tweets)."""
+    # Extrae texto completo incluyendo citas
     texto = item.get("text", "")
     quoted = item.get("quoted")
     if quoted and isinstance(quoted, dict):
@@ -41,12 +41,7 @@ def _extraer_texto_completo(item):
 
 
 def scrapear_twitter():
-    """
-    Busca tweets usando searchTerms en Apify (danek/twitter-scraper-ppr).
-    El filtrado de keywords se hace SERVER-SIDE: Apify devuelve sólo los tweets
-    que contienen la query, en lugar de traer el perfil completo y filtrar localmente.
-    Esto resuelve el problema del límite de 20 posts en el free tier.
-    """
+    # Búsqueda con filtrado server-side en Apify
     if not APIFY_API_TOKEN:
         logger.error("Falta la variable de entorno APIFY_API_TOKEN")
         return []
@@ -54,8 +49,7 @@ def scrapear_twitter():
     client = ApifyClient(APIFY_API_TOKEN)
     limite_fecha = datetime.now(tz=None) - timedelta(days=7)
     todos_los_tweets = []
-    ids_vistos = set()  # evitar duplicados entre queries
-
+    ids_vistos = set()
     for query in SEARCH_QUERIES:
         logger.info(f"Buscando en Twitter: '{query}'")
 
@@ -82,7 +76,6 @@ def scrapear_twitter():
 
             tweets_nuevos = 0
             for item in items:
-                # Deduplicar por ID
                 tweet_id = item.get("id") or item.get("tweet_id")
                 if tweet_id and tweet_id in ids_vistos:
                     continue
