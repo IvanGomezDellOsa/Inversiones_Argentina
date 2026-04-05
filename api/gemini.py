@@ -108,7 +108,9 @@ def procesar_con_gemini(tweets_lista):
             return []
             
     except Exception as e:
+        import traceback
         logger.error(f"Fallo en la comunicación con el servicio de API Google Gemini: {e}")
+        logger.error(traceback.format_exc())
         return []
 
 if __name__ == "__main__":
