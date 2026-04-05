@@ -56,9 +56,11 @@ Schema del Array JSON de salida:
   {{
     "empresa": "nombre comercial de la empresa corto, sin SA ni SRL",
     "descripcion": "máximo 4 oraciones. Solo hechos concretos derivados de la noticia. Sin menciones a fuentes, sin opinión, sin emojis ni hipervínculos.",
-    "monto_usd": número entero puro en dólares sin puntos ni comas. (ej. si son 12 millones poner 12000000). Si no se informa, o está en otra moneda sin poder convertirse limpiamente, poner null,
+    "monto_usd": número entero puro en dólares sin puntos ni comas. Si no se informa, poner null,
     "fecha_anuncio": "YYYY-MM-DD",
-    "estado": "confirmada" o "anunciada" o "en_evaluacion"
+    "estado": "confirmada" o "anunciada" o "en_evaluacion",
+    "ubicacion": "nombre de la provincia argentina donde ocurre la inversión, o null si no se menciona. Solo la provincia, sin ciudad ni país. Ejemplos: 'Neuquén', 'Buenos Aires', 'Salta'.",
+    "empleos": número entero de puestos de trabajo directos generados o previstos, o null si no se menciona. No incluir empleos indirectos.
   }}
 ]
 """

@@ -53,14 +53,16 @@ def insertar_inversion(inversion, embedding, conn):
         
         with conn.cursor() as cursor:
             cursor.execute("""
-                INSERT INTO inversiones (empresa, descripcion, monto_usd, fecha_anuncio, estado, embedding)
-                VALUES (%s, %s, %s, %s, %s, %s::vector)
+                INSERT INTO inversiones (empresa, descripcion, monto_usd, fecha_anuncio, estado, ubicacion, empleos, embedding)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector)
             """, (
                 inversion.get('empresa'),
                 inversion.get('descripcion'),
                 inversion.get('monto_usd'),
                 inversion.get('fecha_anuncio'),
                 inversion.get('estado'),
+                inversion.get('ubicacion'),
+                inversion.get('empleos'),
                 vector_str
             ))
         conn.commit()
@@ -87,6 +89,8 @@ def init_db(conn):
                     estado        TEXT NOT NULL
                                   CONSTRAINT chk_inversiones_estado
                                   CHECK (estado IN ('confirmada', 'anunciada', 'en_evaluacion')),
+                    ubicacion     TEXT,
+                    empleos       INTEGER,
                     embedding     VECTOR(768),
                     created_at    TIMESTAMPTZ DEFAULT NOW()
                 );

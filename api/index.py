@@ -38,7 +38,7 @@ def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por em
         with conn.cursor() as cursor:
             if q:
                 query = """
-                    SELECT empresa, descripcion, monto_usd, fecha_anuncio, estado, created_at
+                    SELECT empresa, descripcion, monto_usd, fecha_anuncio, estado, ubicacion, empleos, created_at
                     FROM inversiones
                     WHERE empresa ILIKE %s OR descripcion ILIKE %s
                     ORDER BY fecha_anuncio DESC NULLS LAST, created_at DESC
@@ -47,7 +47,7 @@ def get_inversiones(q: Optional[str] = Query(None, description="Búsqueda por em
                 cursor.execute(query, (pattern, pattern))
             else:
                 cursor.execute("""
-                    SELECT empresa, descripcion, monto_usd, fecha_anuncio, estado, created_at
+                    SELECT empresa, descripcion, monto_usd, fecha_anuncio, estado, ubicacion, empleos, created_at
                     FROM inversiones
                     ORDER BY fecha_anuncio DESC NULLS LAST, created_at DESC
                 """)

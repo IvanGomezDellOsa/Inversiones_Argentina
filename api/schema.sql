@@ -13,6 +13,8 @@ CREATE TABLE inversiones (
     estado        TEXT NOT NULL
                   CONSTRAINT chk_inversiones_estado
                   CHECK (estado IN ('confirmada', 'anunciada', 'en_evaluacion')),
+    ubicacion     TEXT,
+    empleos       INTEGER,
     embedding     VECTOR(768),
     created_at    TIMESTAMPTZ DEFAULT NOW()
 );
