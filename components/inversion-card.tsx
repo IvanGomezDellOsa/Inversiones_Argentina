@@ -9,6 +9,8 @@ export interface Inversion {
   monto_usd: number | null;
   fecha_anuncio: string;
   estado: "confirmada" | "anunciada" | "en_evaluacion";
+  ubicacion: string | null;
+  empleos: number | null;
 }
 
 interface InversionCardProps {
@@ -57,7 +59,7 @@ function formatDate(dateString: string): string {
 }
 
 export function InversionCard({ inversion, index }: InversionCardProps) {
-  const { empresa, descripcion, monto_usd, fecha_anuncio, estado } = inversion;
+  const { empresa, descripcion, monto_usd, fecha_anuncio, estado, ubicacion, empleos } = inversion;
   const estadoInfo = estadoConfig[estado];
 
   return (
@@ -86,15 +88,29 @@ export function InversionCard({ inversion, index }: InversionCardProps) {
           </time>
 
           <div className="mt-3 bg-card border border-border rounded-lg p-5 md:p-6 shadow-sm hover:shadow-md hover:border-primary/30 transition-all duration-200">
-            <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+            <div className="mb-3">
               <h3 className="text-lg md:text-xl font-semibold text-foreground leading-tight">
                 {empresa}
               </h3>
-              <span
-                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide ${estadoInfo.className}`}
-              >
+            </div>
+
+            {/* Fila de píldoras */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide ${estadoInfo.className}`}>
                 {estadoInfo.label}
               </span>
+              
+              {ubicacion && (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide bg-secondary text-secondary-foreground">
+                  {ubicacion}
+                </span>
+              )}
+
+              {empleos !== null && (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide bg-secondary text-secondary-foreground">
+                  {empleos} empleos
+                </span>
+              )}
             </div>
 
             {monto_usd !== null && (
