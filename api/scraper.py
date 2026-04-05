@@ -10,10 +10,12 @@ logger = logging.getLogger(__name__)
 
 APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
 
-# Lista vacía de keywords = sin filtro; el actor devuelve todos los posts del perfil
-TWITTER_CONFIG = {
-    "zubel_ok": ["Más inversión", "Mas inversion", "más inversión", "mas inversion"],
-}
+# Queries de búsqueda directa en Twitter (filtrado server-side en Apify)
+# Esto evita el problema del límite de 20 posts del perfil completo
+SEARCH_QUERIES = [
+    "más inversión from:zubel_ok",
+    "mas inversion from:zubel_ok",
+]
 
 
 def _parsear_fecha_twitter(fecha_str):
@@ -27,30 +29,20 @@ def _parsear_fecha_twitter(fecha_str):
 def _extraer_texto_completo(item):
     """Extrae el texto completo del tweet, incluyendo citas (quoted tweets)."""
     texto = item.get("text", "")
-
-    # Si tiene un tweet citado, concatenar su texto
     quoted = item.get("quoted")
     if quoted and isinstance(quoted, dict):
         texto_cita = quoted.get("text", "")
         if texto_cita:
             texto += f" | Cita: {texto_cita}"
-
     return texto.strip()
-
-
-def _cumple_filtro(texto_completo, keywords):
-    """Retorna True si el texto contiene al menos una keyword, o si no hay filtro definido."""
-    if not keywords:
-        return True
-    texto_lower = texto_completo.lower()
-    return any(kw.lower() in texto_lower for kw in keywords)
 
 
 def scrapear_twitter():
     """
-    Scrapea los últimos tweets de las cuentas configuradas usando Apify (danek/twitter-scraper-ppr).
-    Filtra por fecha (últimos 7 días) y por keywords definidas en TWITTER_CONFIG.
-    Devuelve una lista de strings con formato: [YYYY-MM-DD] texto del tweet
+    Busca tweets usando searchTerms en Apify (danek/twitter-scraper-ppr).
+    El filtrado de keywords se hace SERVER-SIDE: Apify devuelve sólo los tweets
+    que contienen la query, en lugar de traer el perfil completo y filtrar localmente.
+    Esto resuelve el problema del límite de 20 posts en el free tier.
     """
     if not APIFY_API_TOKEN:
         logger.error("Falta la variable de entorno APIFY_API_TOKEN")
@@ -59,15 +51,14 @@ def scrapear_twitter():
     client = ApifyClient(APIFY_API_TOKEN)
     limite_fecha = datetime.now(tz=None) - timedelta(days=7)
     todos_los_tweets = []
+    ids_vistos = set()  # evitar duplicados entre queries
 
-    for username, keywords in TWITTER_CONFIG.items():
-        logger.info(f"Scrapeando tweets de @{username} via Apify...")
-        if keywords:
-            logger.info(f"  Filtro de keywords activo: {keywords}")
+    for query in SEARCH_QUERIES:
+        logger.info(f"Buscando en Twitter: '{query}'")
 
         run_input = {
-            "username": username,
-            "max_posts": 50,  # Los últimos 50 posts, luego filtramos por fecha y keyword
+            "searchTerms": [query],
+            "max_posts": 20,
         }
 
         try:
@@ -78,49 +69,53 @@ def scrapear_twitter():
 
             status = run.get("status")
             if status != "SUCCEEDED":
-                logger.warning(f"Actor Apify terminó con estado: {status}")
+                logger.warning(f"Actor Apify terminó con estado: {status} para query '{query}'")
                 continue
 
             dataset_id = run.get("defaultDatasetId")
             items = list(client.dataset(dataset_id).iterate_items())
-            logger.info(f"Apify devolvió {len(items)} tweets brutos de @{username}")
+            logger.info(f"Apify devolvió {len(items)} tweets para '{query}'")
 
-            tweets_cuenta = 0
+            tweets_nuevos = 0
             for item in items:
+                # Deduplicar por ID
+                tweet_id = item.get("id") or item.get("tweet_id")
+                if tweet_id and tweet_id in ids_vistos:
+                    continue
+                if tweet_id:
+                    ids_vistos.add(tweet_id)
+
                 fecha_obj = _parsear_fecha_twitter(item.get("created_at", ""))
                 if not fecha_obj:
                     continue
 
-                # Convertir a naive datetime para comparar con limite_fecha
                 fecha_naive = fecha_obj.replace(tzinfo=None)
                 if fecha_naive < limite_fecha:
+                    logger.debug(f"Tweet descartado por fecha: {fecha_naive}")
                     continue
 
                 texto = _extraer_texto_completo(item)
                 if not texto:
                     continue
 
-                # Se omiten tweets que no contienen la keyword de inversión
-                if not _cumple_filtro(texto, keywords):
-                    continue
-
                 fecha_formateada = fecha_naive.strftime("%Y-%m-%d")
                 todos_los_tweets.append(f"[{fecha_formateada}] {texto}")
-                tweets_cuenta += 1
+                tweets_nuevos += 1
 
-            logger.info(f"Tweets de @{username} que pasan filtro (fecha + keyword): {tweets_cuenta}")
+            logger.info(f"Tweets válidos (dentro de 7 días): {tweets_nuevos}")
 
         except Exception as e:
-            logger.error(f"Error al scrapear @{username} con Apify: {e}")
+            logger.error(f"Error al ejecutar query '{query}': {e}")
             continue
 
+    logger.info(f"Total tweets recopilados: {len(todos_los_tweets)}")
     return todos_los_tweets
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     resultado = scrapear_twitter()
-    print(f"\n=== {len(resultado)} tweets encontrados con filtro 'Más inversión' ===\n")
+    print(f"\n=== {len(resultado)} tweets encontrados ===\n")
     for t in resultado:
         print(t)
         print()
