@@ -72,7 +72,6 @@ def insertar_inversion(inversion, embedding, conn):
         conn.rollback()
 
 def init_db(conn):
-    # Inicialización de tablas y extensiones
     if not conn:
         return
     try:

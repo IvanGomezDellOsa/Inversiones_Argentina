@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
 
-# Consultas de búsqueda en Twitter
+
 SEARCH_QUERIES = [
     "Más inversión 🤝 Más empleo from:zubel_ok",
     "Más inversión Más empleo from:zubel_ok",
@@ -30,7 +30,6 @@ def _parsear_fecha_twitter(fecha_str):
 
 
 def _extraer_texto_completo(item):
-    # Extrae texto completo incluyendo citas
     texto = item.get("text", "")
     quoted = item.get("quoted")
     if quoted and isinstance(quoted, dict):
@@ -41,7 +40,6 @@ def _extraer_texto_completo(item):
 
 
 def scrapear_twitter():
-    # Búsqueda con filtrado server-side en Apify
     if not APIFY_API_TOKEN:
         logger.error("Falta la variable de entorno APIFY_API_TOKEN")
         return []
