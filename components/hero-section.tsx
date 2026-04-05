@@ -129,3 +129,4 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
     </motion.header>
   );
 }
+ 

@@ -127,3 +127,4 @@ export function InversionCard({ inversion, index }: InversionCardProps) {
     </motion.article>
   );
 }
+ 

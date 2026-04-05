@@ -81,3 +81,4 @@ export function InversionesGrid({
     </motion.div>
   );
 }
+ 
