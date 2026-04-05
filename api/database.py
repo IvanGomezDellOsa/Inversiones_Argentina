@@ -79,6 +79,7 @@ def init_db(conn):
         with conn.cursor() as cursor:
             cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
             
+            # Crear tabla base si no existe
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS inversiones (
                     id            SERIAL PRIMARY KEY,
@@ -95,6 +96,10 @@ def init_db(conn):
                     created_at    TIMESTAMPTZ DEFAULT NOW()
                 );
             """)
+
+            # Asegurar columnas (migración automática para tablas ya creadas)
+            cursor.execute("ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS ubicacion TEXT;")
+            cursor.execute("ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS empleos INTEGER;")
             
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_inversiones_created_at ON inversiones (created_at DESC);")
             
