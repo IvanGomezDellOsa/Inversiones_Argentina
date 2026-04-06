@@ -46,7 +46,7 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
       </div>
 
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
-        <div className="flex flex-col gap-5 lg:max-w-xl">
+        <div className="flex flex-col gap-5 lg:max-w-xl text-[0.944em]">
           <motion.h1
             variants={itemVariants}
             className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-foreground text-balance leading-tight"
@@ -68,7 +68,7 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
             variants={itemVariants}
             className="flex items-center gap-3 text-sm text-muted-foreground"
           >
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary border border-border">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary border border-border text-[12px] md:text-[14px]">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#74ACDF] opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#74ACDF]"></span>
