@@ -62,7 +62,7 @@ Next.js Frontend (inversionesargentina.com.ar)
 El corazón del proyecto es un pipeline completamente automatizado que se ejecuta cada lunes:
 
 **1. Scraping de Twitter/X via Apify**
-Consulta múltiples queries sobre inversiones desde cuentas curadoradas (ej. `@zubel_ok`), filtra tweets de los últimos 7 días y deduplica por ID.
+Consulta múltiples queries sobre inversiones desde cuentas seleccionadas, filtra tweets de los últimos 7 días y deduplica por ID.
 
 **2. Procesamiento con Gemini + Grounding**
 El prompt envía los tweets scrapeados como FUENTE 1 e instruye a Gemini a buscar en Google noticias adicionales del período como FUENTE 2. El modelo devuelve un array JSON estructurado con campos `empresa`, `descripcion`, `monto_usd`, `fecha_anuncio`, `estado`, `ubicacion` y `empleos`.
