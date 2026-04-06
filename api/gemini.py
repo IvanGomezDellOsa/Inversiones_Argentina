@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from google import genai
-from google.genai.types import GenerateContentConfig, Tool, GoogleSearch, HttpOptions, AutomaticFunctionCallingConfig
+from google.genai.types import GenerateContentConfig, Tool, GoogleSearch, HttpOptions
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
@@ -87,8 +87,7 @@ def procesar_con_gemini(tweets_lista):
             contents=prompt,
             config=GenerateContentConfig(
                 temperature=0.1,
-                tools=[Tool(google_search=GoogleSearch())],
-                automatic_function_calling=AutomaticFunctionCallingConfig(max_remote_calls=5)
+                tools=[Tool(google_search=GoogleSearch())]
             )
         )
 
