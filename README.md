@@ -115,6 +115,7 @@ Integración con la API de Telegram Bot para envío automático de resúmenes se
 
 ## 👤 Autor
 **Iván Gómez Dell'Osa**
-- **GitHub:** IvanGomezDellOsa
-- **Email:** ivangomezdellosa@gmail.com
-- **LinkedIn:** ivangomezdellosa
+
+- **GitHub:** [IvanGomezDellOsa](https://github.com/IvanGomezDellOsa)
+- **Email:** [ivangomezdellosa@gmail.com](mailto:ivangomezdellosa@gmail.com)
+- **Linkedin:** [ivangomezdellosa](https://www.linkedin.com/in/ivangomezdellosa/)
