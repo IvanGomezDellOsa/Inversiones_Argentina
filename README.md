@@ -1,4 +1,3 @@
-```markdown
 # InversionesArgentina — Agregador de Inversiones Privadas en Argentina
 
 🌐 **Deploy en producción:** [inversionesargentina.com.ar](https://inversionesargentina.com.ar)
@@ -31,7 +30,7 @@ Next.js Frontend (inversionesargentina.com.ar)
 
 ## 🛠️ Stack Tecnológico
 
-### Backend / Pipeline
+### Backend / Flujo
 
 | Capa | Tecnología |
 |------|------------|
@@ -57,9 +56,9 @@ Next.js Frontend (inversionesargentina.com.ar)
 
 ---
 
-## ⚙️ Pipeline de Ingesta
+## ⚙️ Flujo de ingesta semanal
 
-El corazón del proyecto es un pipeline completamente automatizado que se ejecuta cada lunes:
+El corazón del proyecto es un flujo completamente automatizado que se ejecuta cada lunes:
 
 **1. Scraping de Twitter/X via Apify**
 Consulta múltiples queries sobre inversiones desde cuentas seleccionadas, filtra tweets de los últimos 7 días y deduplica por ID.
@@ -103,22 +102,19 @@ Los registros únicos se persisten con su embedding vectorial para futuras dedup
 ## 🔮 Próximas Implementaciones
 
 **Chatbot de Telegram automatizado**
-Integración con la API de Telegram Bot para envío automático de resúmenes semanales de nuevas inversiones detectadas. Cada vez que el pipeline de ingesta finalice con nuevas inserciones, el bot notificaría a un canal o grupo con un resumen estructurado de los anuncios de la semana.
+Integración con la API de Telegram Bot para envío automático de resúmenes semanales de nuevas inversiones detectadas. Cada vez que el flujo de ingesta finalice con nuevas inserciones, el bot notificaría a un canal o grupo con un resumen estructurado de los anuncios de la semana.
 
 ---
 
 ## 📝 Notas de Desarrollo
 
-- **Metodología:** Desarrollo asistido por LLMs para maquetación de componentes, escritura de animaciones y generación de código boilerplate. Las decisiones que definen realmente el producto —diseño del pipeline de IA, estrategia de deduplicación semántica con pgvector, arquitectura de la ingesta, diseño del prompt de Gemini con las exclusiones de inversiones estatales, elección de umbrales de similitud y la integración de Google Search Grounding como segunda fuente de datos— fueron tomadas y orquestadas por mí.
-- **Resultado:** Sistema productivo en inversionesargentina.com.ar con pipeline de ingesta completamente automatizado y costo operativo mínimo.
+- **Metodología:** Desarrollo asistido por LLMs para maquetación de componentes, escritura de animaciones y generación de código boilerplate. Las decisiones que definen realmente el producto —diseño del flujo de IA, estrategia de deduplicación semántica con pgvector, arquitectura de la ingesta, diseño del prompt de Gemini con las exclusiones de inversiones estatales, elección de umbrales de similitud y la integración de Google Search Grounding como segunda fuente de datos— fueron tomadas y orquestadas por mí.
+- **Resultado:** Sistema productivo en inversionesargentina.com.ar con flujo de ingesta completamente automatizado y costo operativo mínimo.
 
 ---
 
 ## 👤 Autor
-
 **Iván Gómez Dell'Osa**
-
 - **GitHub:** IvanGomezDellOsa
 - **Email:** ivangomezdellosa@gmail.com
 - **LinkedIn:** ivangomezdellosa
-```
