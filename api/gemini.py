@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 from google import genai
-from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
+from google.genai.types import GenerateContentConfig, Tool, GoogleSearch, HttpOptions, AutomaticFunctionCallingConfig
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +18,10 @@ _client = None
 def get_client():
     global _client
     if _client is None and GEMINI_API_KEY:
-        _client = genai.Client(api_key=GEMINI_API_KEY)
+        _client = genai.Client(
+            api_key=GEMINI_API_KEY,
+            http_options=HttpOptions(timeout=300000)  # 5 minutos (300,000ms)
+        )
     return _client
 
 def construir_prompt(tweets_lista):
@@ -84,7 +87,8 @@ def procesar_con_gemini(tweets_lista):
             contents=prompt,
             config=GenerateContentConfig(
                 temperature=0.1,
-                tools=[Tool(google_search=GoogleSearch())]
+                tools=[Tool(google_search=GoogleSearch())],
+                automatic_function_calling=AutomaticFunctionCallingConfig(max_remote_calls=5)
             )
         )
 
