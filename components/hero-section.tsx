@@ -46,7 +46,7 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
       </div>
 
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
-        <div className="flex flex-col gap-5 lg:max-w-xl text-[0.944em]">
+        <div className="flex flex-col gap-5 lg:max-w-xl text-[0.889em]">
           <motion.h1
             variants={itemVariants}
             className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-foreground text-balance leading-tight"
