@@ -38,7 +38,7 @@ def validar_registro(registro):
     return True
 
 def run_ingesta():
-    logger.info("Iniciando pipeline de ingesta...")
+    logger.info("Iniciando flujo de ingesta semanal...")
     
     logger.info("Scraping tweets via Apify (danek/twitter-scraper-ppr)...")
     tweets = scrapear_twitter()
@@ -95,7 +95,7 @@ def run_ingesta():
         conn.close()
     
     logger.info("====================================")
-    logger.info("Pipeline de Ingesta FINALIZADO.")
+    logger.info("Flujo de Ingesta semanal FINALIZADO.")
     logger.info(f"Nuevas inserciones: {nuevas_inserciones}")
     logger.info(f"Duplicados omitidos: {duplicados}")
     logger.info("====================================")

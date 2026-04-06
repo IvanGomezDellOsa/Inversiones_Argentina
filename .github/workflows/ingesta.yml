@@ -1,4 +1,4 @@
-name: Ingesta semanal
+name: Flujo de ingesta semanal
 
 on:
   schedule:
