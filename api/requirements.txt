@@ -5,3 +5,4 @@ apify-client
 google-genai==1.70.0
 mangum
 python-dotenv
+requests

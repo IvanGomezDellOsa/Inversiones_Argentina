@@ -4,6 +4,7 @@ from scraper import scrapear_twitter
 from gemini import procesar_con_gemini
 from embeddings import generar_embedding
 from database import get_db_connection, es_duplicado, insertar_inversion
+from telegram import enviar_inversion_a_telegram
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -87,6 +88,7 @@ def run_ingesta():
             if not es_dup:
                 logger.info("    No es duplicado. Insertando...")
                 insertar_inversion(inversion, embedding, conn)
+                enviar_inversion_a_telegram(inversion)
                 nuevas_inserciones += 1
             else:
                 logger.info("    Registro detectado como ya existente (duplicado por similitud). Omitiendo.")
