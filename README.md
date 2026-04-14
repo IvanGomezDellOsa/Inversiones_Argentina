@@ -1,4 +1,4 @@
-# InversionesArgentina — Agregador de Inversiones Privadas en Argentina
+# Inversiones en Argentina — Agregador de Inversiones Privadas en Argentina
 
 🌐 **Deploy en producción:** [inversionesargentina.com.ar](https://inversionesargentina.com.ar)
 
