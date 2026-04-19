@@ -3,16 +3,24 @@ import React from "react";
 
 import { motion } from "framer-motion";
 import { InversionCard, type Inversion } from "./inversion-card";
-import { SearchX } from "lucide-react";
+import { SearchX, ChevronDown, Loader2 } from "lucide-react";
 
 interface InversionesGridProps {
   inversiones: Inversion[];
   isLoading?: boolean;
+  isLoadingMore?: boolean;
+  hasMore?: boolean;
+  total?: number;
+  onLoadMore?: () => void;
 }
 
 export function InversionesGrid({
   inversiones,
   isLoading = false,
+  isLoadingMore = false,
+  hasMore = false,
+  total = 0,
+  onLoadMore,
 }: InversionesGridProps) {
   if (isLoading) {
     return (
@@ -64,6 +72,8 @@ export function InversionesGrid({
     );
   }
 
+  const remaining = total - inversiones.length;
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -78,7 +88,58 @@ export function InversionesGrid({
           index={index}
         />
       ))}
+
+      {/* Botón "Cargar más" */}
+      {hasMore && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+          className="flex justify-center pt-4 pb-8"
+        >
+          <button
+            id="load-more-button"
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+            className="group relative inline-flex items-center gap-2.5 px-6 py-3 rounded-full
+              bg-card border border-border text-sm font-medium text-foreground
+              hover:border-primary/50 hover:bg-primary/5 hover:shadow-md
+              active:scale-[0.97]
+              disabled:opacity-60 disabled:cursor-not-allowed
+              transition-all duration-200 cursor-pointer"
+          >
+            {isLoadingMore ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                <span>Cargando...</span>
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                <span>Cargar más</span>
+                <span className="text-xs text-muted-foreground">
+                  ({remaining} {remaining === 1 ? "restante" : "restantes"})
+                </span>
+              </>
+            )}
+          </button>
+        </motion.div>
+      )}
+
+      {/* Indicador de "fin de la lista" */}
+      {!hasMore && inversiones.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+          className="flex flex-col items-center py-8"
+        >
+          <div className="w-2 h-2 rounded-full bg-primary/40 mb-3" />
+          <p className="text-xs text-muted-foreground">
+            {total} {total === 1 ? "inversión" : "inversiones"} en total
+          </p>
+        </motion.div>
+      )}
     </motion.div>
   );
 }
- 
