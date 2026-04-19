@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { HeroSection } from "./hero-section";
 import { TelegramCta } from "./telegram-cta";
 import { SearchInput } from "./search-input";
 import { InversionesGrid } from "./inversiones-grid";
 import type { Inversion } from "./inversion-card";
 
-
+const PAGE_SIZE = 10;
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -29,30 +29,45 @@ export function InversionesDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [inversiones, setInversiones] = useState<Inversion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
   const debouncedQuery = useDebounce(searchQuery, 300);
 
+  // Carga inicial y cuando cambia la búsqueda
   useEffect(() => {
     let active = true;
     setIsLoading(true);
+    setInversiones([]);
+    setHasMore(false);
+    setTotal(0);
 
     const fetchData = async () => {
       try {
-        const url = debouncedQuery.trim() 
-            ? `/api/inversiones?q=${encodeURIComponent(debouncedQuery.trim())}` 
-            : "/api/inversiones";
-        
-        const response = await fetch(url);
+        const params = new URLSearchParams({
+          limit: String(PAGE_SIZE),
+          offset: "0",
+        });
+        if (debouncedQuery.trim()) {
+          params.set("q", debouncedQuery.trim());
+        }
+
+        const response = await fetch(`/api/inversiones?${params}`);
         if (!response.ok) throw new Error("Error en red");
-        const data = await response.json();
-        
+        const json = await response.json();
+
         if (active) {
-          setInversiones(data);
+          setInversiones(json.data);
+          setHasMore(json.hasMore);
+          setTotal(json.total);
           setIsLoading(false);
         }
       } catch (error) {
         console.error("Error fetching inversiones:", error);
         if (active) {
           setInversiones([]);
+          setHasMore(false);
+          setTotal(0);
           setIsLoading(false);
         }
       }
@@ -64,6 +79,34 @@ export function InversionesDashboard() {
       active = false;
     };
   }, [debouncedQuery]);
+
+  // Cargar más resultados
+  const handleLoadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+
+    try {
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(inversiones.length),
+      });
+      if (debouncedQuery.trim()) {
+        params.set("q", debouncedQuery.trim());
+      }
+
+      const response = await fetch(`/api/inversiones?${params}`);
+      if (!response.ok) throw new Error("Error en red");
+      const json = await response.json();
+
+      setInversiones((prev) => [...prev, ...json.data]);
+      setHasMore(json.hasMore);
+      setTotal(json.total);
+    } catch (error) {
+      console.error("Error loading more inversiones:", error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, hasMore, inversiones.length, debouncedQuery]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -80,7 +123,7 @@ export function InversionesDashboard() {
           
           {debouncedQuery.trim() && !isLoading && (
             <p className="text-sm text-muted-foreground">
-              {`${inversiones.length} ${inversiones.length === 1 ? "resultado" : "resultados"}`}
+              {`${total} ${total === 1 ? "resultado" : "resultados"}`}
             </p>
           )}
         </section>
@@ -90,6 +133,10 @@ export function InversionesDashboard() {
           <InversionesGrid
             inversiones={inversiones}
             isLoading={isLoading}
+            isLoadingMore={isLoadingMore}
+            hasMore={hasMore}
+            total={total}
+            onLoadMore={handleLoadMore}
           />
         </section>
       </main>
@@ -110,4 +157,3 @@ export function InversionesDashboard() {
     </div>
   );
 }
- 
