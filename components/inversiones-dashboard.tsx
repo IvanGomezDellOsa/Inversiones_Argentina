@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { HeroSection } from "./hero-section";
+import { TelegramCta } from "./telegram-cta";
 import { SearchInput } from "./search-input";
 import { InversionesGrid } from "./inversiones-grid";
 import type { Inversion } from "./inversion-card";
@@ -68,6 +69,7 @@ export function InversionesDashboard() {
     <div className="min-h-screen bg-background">
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
         <HeroSection videoSrc="/bandera-argentina.mp4" />
+        <TelegramCta />
 
         <section className="py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border mb-8">
           <SearchInput
