@@ -1,8 +1,8 @@
-name: Flujo de ingesta semanal
+name: Flujo de ingesta cada 72hs
 
 on:
   schedule:
-    - cron: '0 10 * * 1'  # Todos los lunes a las 10:00 UTC (07:00 AM Argentina)
+    - cron: '0 4 */3 * *'  # Cada 3 días a las 04:00 UTC (01:00 AM Argentina) - Horario de menor tráfico global
   workflow_dispatch:        # Permite apretar un botón "Run workflow" manualmente en GitHub
 
 jobs:

@@ -64,18 +64,6 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
             Seguimiento cronológico de inversiones privadas en el país.
           </motion.p>
 
-          <motion.div
-            variants={itemVariants}
-            className="flex items-center gap-3 text-sm text-muted-foreground"
-          >
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary border border-border text-[12px] md:text-[14px]">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#74ACDF] opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#74ACDF]"></span>
-              </span>
-              Actualizaciones semanales
-            </span>
-          </motion.div>
         </div>
 
         <motion.div
