@@ -3,14 +3,14 @@
 🌐 **Deploy en producción:** [inversionesargentina.com.ar](https://inversionesargentina.com.ar)
 📢 **Canal de Telegram:** [t.me/inversiones_en_argentina](https://t.me/inversiones_en_argentina)
 
-Agregador web automatizado que recopila, estructura y lista inversiones privadas realizadas o anunciadas en Argentina. El sistema combina scraping de fuentes especializadas en Twitter/X, búsqueda semántica en Google vía IA generativa y una API REST para exponer los datos a un frontend moderno en forma de cronología interactiva. Cada semana, las nuevas inversiones detectadas se publican automáticamente en un canal de Telegram.
+Agregador web automatizado que recopila, estructura y lista inversiones privadas realizadas o anunciadas en Argentina. El sistema combina scraping de fuentes especializadas en Twitter/X, búsqueda semántica en Google vía IA generativa y una API REST para exponer los datos a un frontend moderno en forma de cronología interactiva. Cada 72 horas, las nuevas inversiones detectadas se publican automáticamente tanto en la web ([inversionesargentina.com.ar](https://inversionesargentina.com.ar)) como en el canal de Telegram ([@inversiones_en_argentina](https://t.me/inversiones_en_argentina)).
 
 ---
 
 ## 🏗️ Arquitectura del Sistema
 
 ```text
-GitHub Actions (cron semanal)
+GitHub Actions (cron cada 72hs)
 ↓
 Apify API (scraper Twitter/X)
 ↓
@@ -37,7 +37,7 @@ Next.js Frontend (inversionesargentina.com.ar)
 
 | Capa | Tecnología |
 |------|------------|
-| **Automatización** | GitHub Actions (cron semanal, lunes 07:00 AM ARG) |
+| **Automatización** | GitHub Actions (cron cada 72hs, 01:00 AM ARG) |
 | **Scraping** | Apify — `danek/twitter-scraper-ppr` |
 | **IA Generativa** | Google Gemini 2.5 Flash con Google Search Grounding |
 | **Embeddings** | `gemini-embedding-2-preview` (768 dimensiones) |
@@ -60,12 +60,12 @@ Next.js Frontend (inversionesargentina.com.ar)
 
 ---
 
-## ⚙️ Flujo de ingesta semanal
+## ⚙️ Flujo de ingesta cada 72hs
 
-El corazón del proyecto es un flujo completamente automatizado que se ejecuta cada lunes:
+El corazón del proyecto es un flujo completamente automatizado que se ejecuta cada 72 horas:
 
 **1. Scraping de Twitter/X via Apify**
-Consulta múltiples queries sobre inversiones desde cuentas seleccionadas, filtra tweets de los últimos 7 días y deduplica por ID.
+Consulta múltiples queries sobre inversiones desde cuentas seleccionadas, filtra tweets de los últimos 3 días y deduplica por ID.
 
 **2. Procesamiento con Gemini + Grounding**
 El prompt envía los tweets scrapeados como FUENTE 1 e instruye a Gemini a buscar en Google noticias adicionales del período como FUENTE 2. El modelo devuelve un array JSON estructurado con campos `empresa`, `descripcion`, `monto_usd`, `fecha_anuncio`, `estado`, `ubicacion` y `empleos`.
@@ -82,7 +82,7 @@ Se genera un embedding de 768 dimensiones combinando `empresa + descripcion`. Se
 Los registros únicos se persisten con su embedding vectorial para futuras deduplicaciones.
 
 **6. Publicación automática en Telegram**
-Como parte del mismo flujo de ingesta, los nuevos registros insertados se publican en simultáneo en el canal [@inversiones_en_argentina](https://t.me/inversiones_en_argentina) vía Telegram Bot API, con un resumen estructurado de cada inversión detectada en la semana. La publicación en Telegram y la disponibilidad en el frontend ocurren en el mismo momento, ya que ambos consumen los datos recién persistidos en la base de datos.
+Como parte del mismo flujo de ingesta, los nuevos registros insertados se publican en simultáneo en el canal [@inversiones_en_argentina](https://t.me/inversiones_en_argentina) vía Telegram Bot API, con un resumen estructurado de cada inversión detectada en el ciclo. La publicación en Telegram y la disponibilidad en el frontend ocurren en el mismo momento, ya que ambos consumen los datos recién persistidos en la base de datos.
 
 ---
 
