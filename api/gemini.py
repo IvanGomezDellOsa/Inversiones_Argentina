@@ -28,16 +28,16 @@ def construir_prompt(tweets_lista):
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
     fecha_hace_7_dias = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
 
-    tweets_scrapeados = "\n".join(tweets_lista) if tweets_lista else "No hay tweets relevantes en este periodo."
-    
+    fuentes_scrapeadas = "\n".join(tweets_lista) if tweets_lista else "No hay publicaciones relevantes en este periodo."
+
     prompt = f"""
 Eres un extractor de datos económicos experto especializado en Argentina.
 
 Tenés dos fuentes de datos:
 
-FUENTE 1 — Tweets recientes de curadores de noticias de inversión en Argentina:
+FUENTE 1 — Publicaciones recientes sobre inversión en Argentina: tweets de curadores y titulares/resúmenes de portales económicos (EconoJournal y otros). Las líneas de portales indican su origen entre paréntesis (p. ej. "(EconoJournal)"); las demás provienen de la cuenta de X. Una misma inversión puede aparecer en varias líneas o fuentes: consolidá esos casos en un único registro.
 ---
-{tweets_scrapeados}
+{fuentes_scrapeadas}
 ---
 
 FUENTE 2 — Buscá en Google noticias publicadas entre el {fecha_hace_7_dias} y el {fecha_hoy} sobre inversiones privadas en Argentina. Excluye cualquier noticia publicada antes del {fecha_hace_7_dias}.
@@ -74,7 +74,7 @@ def procesar_con_gemini(tweets_lista):
     if not GEMINI_API_KEY:
         logger.error("Falta la variable de entorno GEMINI_API_KEY")
         return []
-        
+
     client = get_client()
     if not client:
         return []
@@ -96,7 +96,7 @@ def procesar_con_gemini(tweets_lista):
 
         # Limpieza de bloques markdown (Grounding no admite JSON nativo)
         texto_limpio = texto_crudo.replace("```json", "").replace("```", "").strip()
-        
+
         try:
             array_json = json.loads(texto_limpio)
             if not isinstance(array_json, list):
@@ -106,12 +106,12 @@ def procesar_con_gemini(tweets_lista):
                 logger.warning("Gemini devolvió un array JSON vacío.")
                 return []
             return array_json
-            
+
         except json.JSONDecodeError as de:
             logger.error(f"JSONDecodeError: {de}")
             logger.error(f"Texto crudo completo:\n{texto_crudo}")
             return []
-            
+
     except Exception as e:
         import traceback
         logger.error(f"Fallo en la comunicación con el servicio de API Google Gemini: {e}")

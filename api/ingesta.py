@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from scraper import scrapear_twitter
+from fuentes_web import recopilar_fuentes_web
 from gemini import procesar_con_gemini
 from embeddings import generar_embedding
 from database import get_db_connection, es_duplicado, insertar_inversion
@@ -14,15 +15,22 @@ ESTADOS_VALIDOS = {"confirmada", "anunciada", "en_evaluacion"}
 def validar_registro(registro):
     if not isinstance(registro, dict):
         return False
-        
+
     if registro.get("estado") not in ESTADOS_VALIDOS:
         logger.warning(f"Registro descartado por estado inválido: {registro.get('estado')}")
         return False
 
     monto = registro.get("monto_usd")
-    if monto is not None and not isinstance(monto, int):
-        logger.warning(f"Registro descartado por monto_usd inválido: {monto}")
-        return False
+    if isinstance(monto, bool):
+        registro["monto_usd"] = None  # bool es subclase de int en Python
+    elif monto is not None and not isinstance(monto, int):
+        if isinstance(monto, float) and monto.is_integer():
+            registro["monto_usd"] = int(monto)
+        elif isinstance(monto, str) and monto.strip().isdigit():
+            registro["monto_usd"] = int(monto.strip())
+        else:
+            logger.warning(f"monto_usd no normalizable, seteando None: {monto!r}")
+            registro["monto_usd"] = None  # se conserva el registro, se anula solo el monto
 
     fecha_str = registro.get("fecha_anuncio")
     if fecha_str:
@@ -31,7 +39,7 @@ def validar_registro(registro):
         except ValueError:
             logger.warning(f"Fecha inválida, seteando a None: {fecha_str}")
             registro["fecha_anuncio"] = None
-    
+
     if not registro.get("empresa") or not registro.get("descripcion"):
         logger.warning("Registro descartado por falta de empresa o descripción.")
         return False
@@ -40,26 +48,40 @@ def validar_registro(registro):
 
 def run_ingesta():
     logger.info("Iniciando flujo de ingesta semanal...")
-    
+
     logger.info("Scraping tweets via Apify (danek/twitter-scraper-ppr)...")
     tweets = scrapear_twitter()
-    
+
     if not tweets:
-        logger.warning("No se obtuvieron tweets de Apify. Continuando para que Gemini busque exclusivamente en Google.")
-        
+        logger.warning("No se obtuvieron tweets de Apify. Se continúa con las fuentes web y la búsqueda de Gemini.")
+
+    logger.info("Recopilando fuentes web (EconoJournal RSS)...")
+    publicaciones_web = recopilar_fuentes_web()
+
+    # Combinamos tweets + fuentes web y deduplicamos el batch antes de procesar,
+    # para no enviar la misma línea repetida cuando varias fuentes coinciden.
+    publicaciones = list(dict.fromkeys((tweets or []) + (publicaciones_web or [])))
+    logger.info(
+        f"Publicaciones combinadas: {len(publicaciones)} "
+        f"({len(tweets or [])} de X, {len(publicaciones_web or [])} de web)."
+    )
+
+    if not publicaciones:
+        logger.warning("No se obtuvo material de ninguna fuente. Gemini buscará exclusivamente en Google.")
+
     logger.info("Procesando contenido con Gemini (interpreta y busca en Google)...")
-    inversiones_crudo = procesar_con_gemini(tweets)
-    
+    inversiones_crudo = procesar_con_gemini(publicaciones)
+
     if not inversiones_crudo:
         logger.warning("Gemini no devolvió resultados o hubo un error al parsear. Finalizando.")
         return
-        
+
     logger.info(f"Gemini extrajo {len(inversiones_crudo)} posibles inversiones en formato JSON.")
 
     logger.info("Validando formato y consistencia de datos...")
     inversiones_validas = [r for r in inversiones_crudo if validar_registro(r)]
     logger.info(f"Quedan {len(inversiones_validas)} inversiones viables luego de validación.")
-    
+
     if not inversiones_validas:
         return
 
@@ -77,13 +99,13 @@ def run_ingesta():
         for inversion in inversiones_validas:
             texto = f"{inversion['empresa']} {inversion['descripcion']}"
             logger.info(f" -> Procesando: {inversion['empresa']}")
-            
+
             embedding = generar_embedding(texto)
-            
+
             if not embedding:
                 logger.error(f"    Fallo al generar embedding para {inversion['empresa']}. Saltando.")
                 continue
-                
+
             es_dup = es_duplicado(embedding, conn)
             if not es_dup:
                 logger.info("    No es duplicado. Insertando...")
@@ -95,7 +117,7 @@ def run_ingesta():
                 duplicados += 1
     finally:
         conn.close()
-    
+
     logger.info("====================================")
     logger.info("Flujo de Ingesta semanal FINALIZADO.")
     logger.info(f"Nuevas inserciones: {nuevas_inserciones}")
