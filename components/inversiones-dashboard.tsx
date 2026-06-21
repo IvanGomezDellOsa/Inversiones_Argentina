@@ -143,15 +143,12 @@ export function InversionesDashboard() {
 
       <footer className="border-t border-border py-8">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            Contactame en:{" "}
-            <a 
-              href="mailto:ivangomezdellosa@gmail.com"
-              className="text-foreground hover:text-primary transition-colors underline underline-offset-2"
-            >
-              ivangomezdellosa@gmail.com
-            </a>
-          </p>
+          <a
+            href="mailto:ivangomezdellosa@gmail.com?subject=Consulta%20sobre%20Inversiones%20Argentina"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground bg-muted border border-border px-4 py-1.5 rounded-full transition-colors hover:text-foreground hover:border-foreground/30"
+          >
+            Contacto
+          </a>
         </div>
       </footer>
     </div>
