@@ -5,6 +5,7 @@ import { HeroSection } from "./hero-section";
 import { TelegramCta } from "./telegram-cta";
 import { SearchInput } from "./search-input";
 import { InversionesGrid } from "./inversiones-grid";
+import { ShareButton } from "./share-button";
 import type { Inversion } from "./inversion-card";
 
 const PAGE_SIZE = 10;
@@ -142,7 +143,8 @@ export function InversionesDashboard() {
       </main>
 
       <footer className="border-t border-border py-8">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-center gap-3 flex-wrap">
+          <ShareButton />
           <a
             href="mailto:ivangomezdellosa@gmail.com?subject=Consulta%20sobre%20Inversiones%20Argentina"
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground bg-muted border border-border px-4 py-1.5 rounded-full transition-colors hover:text-foreground hover:border-foreground/30"
