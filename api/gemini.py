@@ -35,7 +35,7 @@ Eres un extractor de datos económicos experto especializado en Argentina.
 
 Tenés dos fuentes de datos:
 
-FUENTE 1 — Publicaciones recientes sobre inversión en Argentina: tweets de curadores y titulares/resúmenes de portales económicos (EconoJournal y otros). Las líneas de portales indican su origen entre paréntesis (p. ej. "(EconoJournal)"); las demás provienen de la cuenta de X. Una misma inversión puede aparecer en varias líneas o fuentes: consolidá esos casos en un único registro.
+FUENTE 1 — Publicaciones recientes sobre inversión en Argentina: tweets de curadores y titulares/resúmenes de portales económicos (EconoJournal y otros). Las líneas de portales indican su origen entre paréntesis (p. ej. "(EconoJournal)"); las demás provienen de la cuenta de X. Una misma inversión puede aparecer en varias líneas o fuentes, y a veces con distinto encuadre (el anuncio, la aprobación legislativa, la firma del acuerdo, la adhesión al RIGI): consolidá TODOS esos casos en un único registro del mismo proyecto, sin duplicar.
 ---
 {fuentes_scrapeadas}
 ---
@@ -45,19 +45,25 @@ FUENTE 2 — Buscá en Google noticias publicadas entre el {fecha_hace_7_dias} y
 Procesá ambas fuentes y devuelve ÚNICAMENTE un array JSON válido, sin texto adicional, sin markdown, sin emojis.
 No agregues bajo ningún punto de vista referencias ni citas como [1], [2], [3] dentro de los campos. Limpiá cualquier vestigio HTML de las cadenas de texto.
 
-Exclusiones de inversión:
+Exclusiones de inversión (si el caso cae en alguna de estas, NO generes el registro):
 - Inversiones directas del Estado nacional, provincial o municipal como principal inversor.
 - Empresas operadas exclusivamente por el Estado sin accionistas privados (ej. Correo Argentino, Trenes Argentinas, AYSA). Las empresas con capital mixto o que cotizan en bolsa (ej. YPF, Aerolíneas) sí deben incluirse si la inversión es una decisión corporativa.
 - Adquisiciones de empresas u oficinas en el exterior de parte de una matriz argentina.
 - Movimientos financieros internos (ej. liquidación de dólares, aumentos de capital societario abstracto).
 - Proyecciones sectoriales ("el sector minero va a crecer") sin anuncio concreto de una empresa en particular.
+- Anuncios colectivos o sectoriales del tipo "varias empresas invertirán/anunciarán" sin una empresa concreta y un monto concreto identificables. No agrupes una lista de empresas en un registro.
+- Licitaciones, convocatorias o invitaciones del Estado a que privados inviertan, donde todavía no hay una empresa privada concreta que se haya comprometido (el sujeto real es el Estado y el inversor queda genérico).
+- Hitos operativos o comerciales sin nueva inversión de capital: inauguraciones, inicios de producción/servicio o "comenzó a operar/abastecer/producir", cuando la noticia NO anuncia un monto nuevo ni un proyecto de obra/planta/expansión concreto.
+- Intenciones vagas o expresiones de interés ("expresó su intención", "evalúa", "analiza", "podría invertir", "está interesado", "afirmó que invertirá") cuando NO hay un proyecto concreto, es decir, cuando falta a la vez el monto y un plan específico (obra, planta, cantidad de pozos, sucursales, etc.).
 - Convocatorias de empleo inespecíficas que no blanqueen montos de inversión en la noticia original.
 - Cuidado: Si la noticia menciona a un gobernador o presidente anunciando una inversión privada de una empresa, registrar al sujeto corporativo (la empresa) y jamás al sujeto político.
+
+Regla del sujeto (campo "empresa"): debe ser el nombre comercial de UNA empresa real e identificable. Si la noticia no nombra una empresa concreta —solo un sector, un genérico ("empresas privadas", "varios", "inversores privados"), una categoría o descripción ("atelier de helado artesanal", "planta de bioetanol") en lugar de la marca, o únicamente el nombre de una persona física sin una empresa detrás— NO generes el registro. Una inversión sin un titular corporativo identificable no se publica.
 
 Schema del Array JSON de salida:
 [
   {{
-    "empresa": "nombre comercial de la empresa corto, sin SA ni SRL",
+    "empresa": "nombre comercial corto de UNA empresa real e identificable, sin SA ni SRL. Nunca un sector, un genérico, una categoría/descripción ni el nombre de una persona física. Si no hay empresa concreta identificable, omití el registro entero.",
     "descripcion": "máximo 4 oraciones. Solo hechos concretos derivados de la noticia. Sin menciones a fuentes, sin opinión, sin emojis ni hipervínculos.",
     "monto_usd": número entero puro en dólares sin puntos ni comas. Si no se informa, poner null,
     "fecha_anuncio": "YYYY-MM-DD",

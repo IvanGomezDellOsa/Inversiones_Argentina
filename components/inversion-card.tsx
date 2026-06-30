@@ -7,7 +7,7 @@ export interface Inversion {
   empresa: string;
   descripcion: string;
   monto_usd: number | null;
-  fecha_anuncio: string;
+  fecha_anuncio: string | null;
   estado: "confirmada" | "anunciada" | "en_evaluacion";
   ubicacion: string | null;
   empleos: number | null;
@@ -53,9 +53,14 @@ const MONTHS_ES = [
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
 ];
 
-function formatDate(dateString: string): string {
-  const [year, month, day] = dateString.split("-").map(Number);
-  return `${day} de ${MONTHS_ES[month - 1]} de ${year}`;
+function formatDate(dateString: string | null | undefined): string {
+  if (!dateString) return "Fecha no disponible";
+  const parts = dateString.split("-").map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return "Fecha no disponible";
+  const [year, month, day] = parts;
+  const mes = MONTHS_ES[month - 1];
+  if (!mes) return "Fecha no disponible";
+  return `${day} de ${mes} de ${year}`;
 }
 
 export function InversionCard({ inversion, index }: InversionCardProps) {
@@ -80,8 +85,8 @@ export function InversionCard({ inversion, index }: InversionCardProps) {
         </div>
 
         <div className="flex-1 pb-8 md:pb-10">
-          <time 
-            dateTime={fecha_anuncio}
+          <time
+            dateTime={fecha_anuncio ?? undefined}
             className="text-sm text-muted-foreground font-medium"
           >
             {formatDate(fecha_anuncio)}

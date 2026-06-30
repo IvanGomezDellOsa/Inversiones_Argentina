@@ -1,4 +1,5 @@
 import logging
+import unicodedata
 from datetime import datetime
 from scraper import scrapear_twitter
 from fuentes_web import recopilar_fuentes_web
@@ -11,6 +12,41 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ESTADOS_VALIDOS = {"confirmada", "anunciada", "en_evaluacion"}
+
+# Nombres genéricos o no identificables que no deben publicarse en el campo "empresa".
+# El sujeto de una inversión tiene que ser una empresa concreta, no un sector ni un placeholder.
+_EMPRESAS_GENERICAS = {
+    "empresa", "empresas", "empresa privada", "empresas privadas",
+    "inversor privado", "inversores privados", "sector privado",
+    "privado", "privados", "varios", "varias", "varias empresas",
+    "no especificada", "no especificado", "sin especificar",
+    "desconocida", "desconocido", "n/a", "na", "anonimo",
+}
+
+
+def _normalizar(texto: str) -> str:
+    """Minúsculas sin tildes ni espacios sobrantes, para comparar nombres."""
+    sin_tildes = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+    return sin_tildes.strip().lower()
+
+
+def _empresa_invalida(empresa) -> bool:
+    """
+    True si el nombre de empresa no sirve para publicar: vacío, genérico,
+    una lista de varias empresas, o anómalamente largo (no es una marca).
+    Es la red de seguridad programática del filtro que ya pide el prompt de Gemini.
+    """
+    if not empresa or not str(empresa).strip():
+        return True
+    texto = str(empresa)
+    if _normalizar(texto) in _EMPRESAS_GENERICAS:
+        return True
+    if texto.count(",") >= 3:   # "Empresa A, Empresa B, Empresa C, ..." → es una lista
+        return True
+    if len(texto) > 90:         # un nombre tan largo no es un nombre comercial
+        return True
+    return False
+
 
 def validar_registro(registro):
     if not isinstance(registro, dict):
@@ -40,8 +76,12 @@ def validar_registro(registro):
             logger.warning(f"Fecha inválida, seteando a None: {fecha_str}")
             registro["fecha_anuncio"] = None
 
-    if not registro.get("empresa") or not registro.get("descripcion"):
-        logger.warning("Registro descartado por falta de empresa o descripción.")
+    if not registro.get("descripcion"):
+        logger.warning("Registro descartado por falta de descripción.")
+        return False
+
+    if _empresa_invalida(registro.get("empresa")):
+        logger.warning(f"Registro descartado por empresa inválida o genérica: {registro.get('empresa')!r}")
         return False
 
     return True
