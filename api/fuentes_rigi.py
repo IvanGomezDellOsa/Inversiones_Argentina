@@ -23,19 +23,21 @@ Decisiones de diseño:
 """
 
 import logging
+import os
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Hoja pública y API key embebidas en el JS público de argentina.gob.ar/economia/rigi.
+# ID de la hoja pública del portal RIGI (identificador de documento, no es un secreto).
 RIGI_SHEET_ID = "1eytHJrzUjIFOXI-P1Hx_wbmZiSqPxVle059Djdos6u8"
-RIGI_API_KEY = "AIzaSyCq2wEEKL9-6RmX-TkW23qJsrmnFHFf5tY"
 RIGI_SHEET_NAME = "dataset"
-RIGI_URL = (
-    f"https://sheets.googleapis.com/v4/spreadsheets/{RIGI_SHEET_ID}"
-    f"/values/{RIGI_SHEET_NAME}?key={RIGI_API_KEY}&alt=json"
-)
+# API key de Google Sheets del portal público de gob.ar. Se lee del entorno para no
+# versionarla; si falta, la fuente RIGI se omite (fail-safe, no rompe la ingesta).
+RIGI_API_KEY = os.getenv("RIGI_API_KEY")
 
 TIMEOUT = 20
 FILAS_ENCABEZADO = 2          # fila 0 = claves, fila 1 = etiquetas humanas
@@ -63,8 +65,16 @@ def recopilar_rigi(fecha_hoy: str) -> list:
     Devuelve los proyectos RIGI aprobados como líneas de texto para el pipeline.
     `fecha_hoy` es la fecha de ejecución del cron en formato YYYY-MM-DD.
     """
+    if not RIGI_API_KEY:
+        logger.warning("RIGI: falta la variable de entorno RIGI_API_KEY. Se omite la fuente RIGI.")
+        return []
+
+    url = (
+        f"https://sheets.googleapis.com/v4/spreadsheets/{RIGI_SHEET_ID}"
+        f"/values/{RIGI_SHEET_NAME}?key={RIGI_API_KEY}&alt=json"
+    )
     try:
-        resp = requests.get(RIGI_URL, timeout=TIMEOUT)
+        resp = requests.get(url, timeout=TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
