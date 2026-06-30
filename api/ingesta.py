@@ -3,6 +3,7 @@ import unicodedata
 from datetime import datetime
 from scraper import scrapear_twitter
 from fuentes_web import recopilar_fuentes_web
+from fuentes_rigi import recopilar_rigi
 from gemini import procesar_con_gemini
 from embeddings import generar_embedding
 from database import get_db_connection, es_duplicado, insertar_inversion
@@ -32,18 +33,16 @@ def _normalizar(texto: str) -> str:
 
 def _empresa_invalida(empresa) -> bool:
     """
-    True si el nombre de empresa no sirve para publicar: vacío, genérico,
-    una lista de varias empresas, o anómalamente largo (no es una marca).
-    Es la red de seguridad programática del filtro que ya pide el prompt de Gemini.
+    Red de seguridad determinística (complementa, no reemplaza, al prompt de Gemini).
+    True si el nombre de empresa no sirve para publicar: vacío, genérico, o
+    anómalamente largo (una lista de empresas o una descripción, no una marca).
     """
     if not empresa or not str(empresa).strip():
         return True
     texto = str(empresa)
     if _normalizar(texto) in _EMPRESAS_GENERICAS:
         return True
-    if texto.count(",") >= 3:   # "Empresa A, Empresa B, Empresa C, ..." → es una lista
-        return True
-    if len(texto) > 90:         # un nombre tan largo no es un nombre comercial
+    if len(texto) > 90:   # un nombre tan largo es una lista o una descripción, no una marca
         return True
     return False
 
@@ -68,13 +67,19 @@ def validar_registro(registro):
             logger.warning(f"monto_usd no normalizable, seteando None: {monto!r}")
             registro["monto_usd"] = None  # se conserva el registro, se anula solo el monto
 
+    # Fecha: si no viene una fecha válida del anuncio, usamos la fecha de ejecución
+    # del cron. Las fechas solo dan un orden cronológico aproximado (el cron corre
+    # seguido), no son un dato informativo, así que evitamos fechas nulas en la base.
     fecha_str = registro.get("fecha_anuncio")
+    fecha_valida = False
     if fecha_str:
         try:
-            datetime.strptime(fecha_str, "%Y-%m-%d")
-        except ValueError:
-            logger.warning(f"Fecha inválida, seteando a None: {fecha_str}")
-            registro["fecha_anuncio"] = None
+            datetime.strptime(str(fecha_str), "%Y-%m-%d")
+            fecha_valida = True
+        except (ValueError, TypeError):
+            logger.warning(f"Fecha inválida: {fecha_str!r}. Se usará la fecha de ejecución.")
+    if not fecha_valida:
+        registro["fecha_anuncio"] = datetime.now().strftime("%Y-%m-%d")
 
     if not registro.get("descripcion"):
         logger.warning("Registro descartado por falta de descripción.")
@@ -98,12 +103,18 @@ def run_ingesta():
     logger.info("Recopilando fuentes web (EconoJournal RSS)...")
     publicaciones_web = recopilar_fuentes_web()
 
-    # Combinamos tweets + fuentes web y deduplicamos el batch antes de procesar,
+    logger.info("Recopilando fuente oficial RIGI (proyectos aprobados)...")
+    publicaciones_rigi = recopilar_rigi(datetime.now().strftime("%Y-%m-%d"))
+
+    # Combinamos todas las fuentes y deduplicamos el batch antes de procesar,
     # para no enviar la misma línea repetida cuando varias fuentes coinciden.
-    publicaciones = list(dict.fromkeys((tweets or []) + (publicaciones_web or [])))
+    publicaciones = list(dict.fromkeys(
+        (tweets or []) + (publicaciones_web or []) + (publicaciones_rigi or [])
+    ))
     logger.info(
         f"Publicaciones combinadas: {len(publicaciones)} "
-        f"({len(tweets or [])} de X, {len(publicaciones_web or [])} de web)."
+        f"({len(tweets or [])} de X, {len(publicaciones_web or [])} de web, "
+        f"{len(publicaciones_rigi or [])} de RIGI)."
     )
 
     if not publicaciones:
