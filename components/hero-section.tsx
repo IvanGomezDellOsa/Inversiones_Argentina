@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { ArrowRight } from "lucide-react";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -64,6 +65,16 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
             Seguimiento cronológico de inversiones privadas en el país.
           </motion.p>
 
+          <motion.a
+            variants={itemVariants}
+            href="https://www.argentina.gob.ar/economia/rigi"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group self-start inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Más sobre RIGI
+            <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" aria-hidden="true" />
+          </motion.a>
         </div>
 
         <motion.div
