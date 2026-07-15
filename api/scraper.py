@@ -60,7 +60,7 @@ def scrapear_twitter():
         try:
             run = client.actor("danek/twitter-scraper-ppr").call(
                 run_input=run_input,
-                timeout_secs=120
+                wait_duration=timedelta(seconds=120)
             )
 
             status = run.get("status")

@@ -1,8 +1,10 @@
 import os
 import json
+import time
 import logging
 from datetime import datetime, timedelta
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai.types import GenerateContentConfig, Tool, GoogleSearch, HttpOptions
 from dotenv import load_dotenv
 
@@ -83,14 +85,29 @@ def procesar_con_gemini(tweets_lista):
 
     logger.info("Enviando prompt a Gemini 2.5 Flash con Grounding activado...")
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=GenerateContentConfig(
-                temperature=0.1,
-                tools=[Tool(google_search=GoogleSearch())]
-            )
-        )
+        # Los 503 por alta demanda son transitorios: reintentar antes de perder el ciclo de 72hs
+        intentos_maximos = 4
+        espera_segundos = 30
+        for intento in range(1, intentos_maximos + 1):
+            try:
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=prompt,
+                    config=GenerateContentConfig(
+                        temperature=0.1,
+                        tools=[Tool(google_search=GoogleSearch())]
+                    )
+                )
+                break
+            except genai_errors.ServerError as se:
+                if intento == intentos_maximos:
+                    raise
+                logger.warning(
+                    f"Gemini devolvió un error de servidor (intento {intento}/{intentos_maximos}): {se}. "
+                    f"Reintentando en {espera_segundos}s..."
+                )
+                time.sleep(espera_segundos)
+                espera_segundos *= 2
 
         texto_crudo = response.text
         logger.info(f"Texto crudo de Gemini (primeros 500 chars): {texto_crudo[:500]}")

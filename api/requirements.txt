@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 psycopg2-binary
-apify-client
+apify-client>=3.0,<4.0
 google-genai==1.70.0
 mangum
 python-dotenv
