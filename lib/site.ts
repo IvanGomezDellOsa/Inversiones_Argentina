@@ -14,12 +14,21 @@ export const SITE_DESCRIPTION =
   "Seguimiento cronológico de las inversiones privadas anunciadas y confirmadas en Argentina. " +
   "Datos de fuentes oficiales, medios especializados y el registro RIGI, actualizados automáticamente.";
 
-/** URL canónica del sitio. En preview usa la que asigna Vercel. */
+export const PRODUCTION_URL = "https://inversionesargentina.com.ar";
+
+/**
+ * URL canónica del sitio.
+ *
+ * A propósito NO usa VERCEL_URL. Esa variable apunta al deployment que se está
+ * construyendo, que todavía no sirve tráfico: el fetch del servidor fallaría
+ * durante el build y la página quedaría prerenderizada vacía, justo lo que este
+ * cambio viene a arreglar. Además, como canonical y como og:url hay que
+ * publicar siempre el dominio de producción, nunca una URL de preview.
+ */
 export function getSiteUrl(): string {
   const explicita = process.env.NEXT_PUBLIC_SITE_URL;
   if (explicita) return explicita.replace(/\/$/, "");
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "https://inversionesargentina.com.ar";
+  return PRODUCTION_URL;
 }
 
 export const PAGE_SIZE = 10;
