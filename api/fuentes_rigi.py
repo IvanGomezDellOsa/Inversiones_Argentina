@@ -7,21 +7,30 @@ una hoja de Google Sheets pública; consumimos esa misma hoja vía la API de
 Sheets (datos ya estructurados: empresa, monto, provincia, sector, descripción).
 
 Por qué sumarla: es la fuente de MENOR margen de error para estos anuncios
-(datos oficiales, no interpretación periodística). Cada fila se convierte en una
-línea de texto en el MISMO formato que las demás fuentes ("[YYYY-MM-DD] (RIGI)
-...") y entra al pipeline existente (Gemini + deduplicación) sin lógica nueva.
+(datos oficiales, no interpretación periodística).
+
+Dos problemas que resolvió la auditoría de septiembre de 2026:
+
+1. La hoja trae filas REPETIDAS (un proyecto compartido entre provincias aparece
+   una vez por provincia). Eran 29 filas para 23 proyectos reales.
+
+2. Se reenviaba la lista COMPLETA a Gemini en cada corrida. Eso consumía ~75%
+   del prompt y generaba ~23 descartes por duplicado por ciclo — trabajo y plata
+   tirados, y menos espacio para descubrir cosas nuevas. Ahora se lleva registro
+   de qué proyectos ya se procesaron (tabla `rigi_vistos`) y solo se mandan los
+   NUEVOS o los que CAMBIARON de monto/empleos/descripción.
 
 Decisiones de diseño:
 - Fail-safe: ante cualquier fallo (red, formato, rotación de la API key pública)
   devuelve [] y NO rompe la ingesta.
-- La hoja NO trae fecha por proyecto: usamos la fecha de ejecución del cron. Las
-  fechas solo dan un orden cronológico aproximado, no son un dato informativo.
-- El monto de la hoja está expresado en MILLONES de USD: lo explicitamos como
-  "USD N millones" para que el pipeline lo normalice igual que las demás fuentes.
+- Si no hay conexión a la base, se manda todo (comportamiento anterior): es
+  preferible gastar prompt de más que perder un proyecto nuevo.
+- La hoja NO trae fecha por proyecto: usamos la fecha de ejecución del cron.
+- El monto de la hoja está en MILLONES de USD: se explicita como "USD N millones".
 - La hoja tiene DOS filas de encabezado (claves y etiquetas): se saltan ambas.
-- La hoja "evaluacion" son solo totales agregados, no proyectos: se ignora.
 """
 
+import hashlib
 import logging
 import os
 
@@ -60,14 +69,11 @@ def _celda(fila, indice):
     return ""
 
 
-def recopilar_rigi(fecha_hoy: str) -> list:
-    """
-    Devuelve los proyectos RIGI aprobados como líneas de texto para el pipeline.
-    `fecha_hoy` es la fecha de ejecución del cron en formato YYYY-MM-DD.
-    """
+def _descargar_filas():
+    """Devuelve las filas de datos de la hoja, o None si falló."""
     if not RIGI_API_KEY:
         logger.warning("RIGI: falta la variable de entorno RIGI_API_KEY. Se omite la fuente RIGI.")
-        return []
+        return None
 
     url = (
         f"https://sheets.googleapis.com/v4/spreadsheets/{RIGI_SHEET_ID}"
@@ -79,55 +85,161 @@ def recopilar_rigi(fecha_hoy: str) -> list:
         data = resp.json()
     except Exception as e:
         logger.error(f"RIGI: fallo al obtener/parsear la hoja oficial: {e}")
-        return []
+        return None
 
     filas = data.get("values") or []
     if len(filas) <= FILAS_ENCABEZADO:
         logger.warning("RIGI: la hoja no trae filas de datos (¿cambió el formato?).")
-        return []
+        return None
+    return filas[FILAS_ENCABEZADO:]
 
-    resultados = []
-    for fila in filas[FILAS_ENCABEZADO:]:
+
+def _proyectos_unicos(filas):
+    """
+    Colapsa las filas repetidas de la hoja en proyectos únicos.
+    Un proyecto compartido entre provincias aparece una vez por provincia; se
+    conserva la primera fila y se acumulan las provincias.
+    """
+    unicos = {}
+    for fila in filas:
         empresa = _celda(fila, COL_EMPRESA)
         nombre = _celda(fila, COL_NOMBRE)
         if not empresa or not nombre:
             continue  # fila incompleta: la salteamos sin romper
 
+        clave = (empresa.lower(), nombre.lower())
         provincia = _celda(fila, COL_PROVINCIA)
-        sector = _celda(fila, COL_SECTOR)
-        empleos = _celda(fila, COL_EMPLEOS)
-        descripcion = _celda(fila, COL_DESCRIPCION)[:MAX_DESCRIPCION]
-        inversion = _celda(fila, COL_INVERSION)
 
-        partes = [f"{empresa} — proyecto \"{nombre}\""]
-        if provincia:
-            partes.append(f"en {provincia}")
-        detalle = ". ".join([" ".join(partes)])
-        extra = []
-        if sector:
-            extra.append(f"Sector: {sector}")
-        if inversion:
-            extra.append(f"Inversión comprometida: USD {inversion} millones")
-        if empleos:
-            extra.append(f"Empleos: {empleos}")
-        cuerpo = ". ".join([detalle] + extra)
-        if descripcion:
-            cuerpo = f"{cuerpo}. {descripcion}"
+        if clave in unicos:
+            if provincia and provincia not in unicos[clave]["provincias"]:
+                unicos[clave]["provincias"].append(provincia)
+            continue
 
-        # Estado "confirmada": son proyectos ya APROBADOS y adheridos al RIGI.
-        texto = f"[{fecha_hoy}] (RIGI) Proyecto aprobado y adherido al RIGI. {cuerpo}"
-        resultados.append(texto)
+        unicos[clave] = {
+            "clave": f"{empresa}|{nombre}",
+            "empresa": empresa,
+            "nombre": nombre,
+            "provincias": [provincia] if provincia else [],
+            "sector": _celda(fila, COL_SECTOR),
+            "empleos": _celda(fila, COL_EMPLEOS),
+            "inversion": _celda(fila, COL_INVERSION),
+            "descripcion": _celda(fila, COL_DESCRIPCION)[:MAX_DESCRIPCION],
+        }
+    return list(unicos.values())
 
-    logger.info(f"RIGI: {len(resultados)} proyectos aprobados recopilados.")
-    return resultados
+
+def _huella(proyecto) -> str:
+    """
+    Hash del contenido relevante. Si cambia el monto, los empleos o la
+    descripción, el proyecto se vuelve a mandar para que Gemini lo actualice.
+    """
+    crudo = "|".join([
+        proyecto["empresa"], proyecto["nombre"], proyecto["inversion"],
+        proyecto["empleos"], proyecto["descripcion"],
+    ])
+    return hashlib.sha256(crudo.encode("utf-8")).hexdigest()
+
+
+def _linea(proyecto, fecha_hoy: str) -> str:
+    """Arma la línea de texto para el pipeline, en el formato de las demás fuentes."""
+    partes = [f"{proyecto['empresa']} — proyecto \"{proyecto['nombre']}\""]
+    if proyecto["provincias"]:
+        partes.append(f"en {', '.join(proyecto['provincias'])}")
+    cuerpo = " ".join(partes)
+
+    extra = []
+    if proyecto["sector"]:
+        extra.append(f"Sector: {proyecto['sector']}")
+    if proyecto["inversion"]:
+        extra.append(f"Inversión comprometida: USD {proyecto['inversion']} millones")
+    if proyecto["empleos"]:
+        extra.append(f"Empleos: {proyecto['empleos']}")
+    cuerpo = ". ".join([cuerpo] + extra)
+
+    if proyecto["descripcion"]:
+        cuerpo = f"{cuerpo}. {proyecto['descripcion']}"
+
+    # Estado "confirmada": son proyectos ya APROBADOS y adheridos al RIGI.
+    return f"[{fecha_hoy}] (RIGI) Proyecto aprobado y adherido al RIGI. {cuerpo}"
+
+
+# --- Registro de lo ya procesado ----------------------------------------------
+
+def _leer_vistos(conn) -> dict:
+    """clave -> huella de los proyectos RIGI ya procesados."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT clave, huella FROM rigi_vistos")
+        return dict(cur.fetchall())
+
+
+def _marcar_vistos(conn, proyectos):
+    """Guarda (o actualiza) la huella de los proyectos que se acaban de mandar."""
+    if not proyectos:
+        return
+    with conn.cursor() as cur:
+        for p in proyectos:
+            cur.execute(
+                """
+                INSERT INTO rigi_vistos (clave, huella, visto_en)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (clave) DO UPDATE
+                  SET huella = EXCLUDED.huella, visto_en = NOW()
+                """,
+                (p["clave"], _huella(p)),
+            )
+    conn.commit()
+
+
+def recopilar_rigi(fecha_hoy: str, conn=None) -> list:
+    """
+    Devuelve como líneas de texto los proyectos RIGI que son nuevos o cambiaron
+    desde la última corrida. `fecha_hoy` es la fecha de ejecución del cron.
+
+    Con `conn=None` devuelve todos los proyectos (sin filtro incremental).
+    """
+    filas = _descargar_filas()
+    if filas is None:
+        return []
+
+    proyectos = _proyectos_unicos(filas)
+    logger.info(f"RIGI: {len(filas)} filas en la hoja -> {len(proyectos)} proyectos únicos.")
+
+    if conn is None:
+        logger.info("RIGI: sin conexión a la base, se mandan todos los proyectos.")
+        return [_linea(p, fecha_hoy) for p in proyectos]
+
+    try:
+        vistos = _leer_vistos(conn)
+    except Exception as e:
+        # Tabla inexistente o error de lectura: degradamos a mandar todo.
+        logger.warning(f"RIGI: no se pudo leer el registro de vistos ({e}). Se mandan todos.")
+        conn.rollback()
+        return [_linea(p, fecha_hoy) for p in proyectos]
+
+    nuevos = [p for p in proyectos if vistos.get(p["clave"]) != _huella(p)]
+
+    try:
+        _marcar_vistos(conn, nuevos)
+    except Exception as e:
+        logger.warning(f"RIGI: no se pudo actualizar el registro de vistos ({e}).")
+        conn.rollback()
+
+    if not nuevos:
+        logger.info(f"RIGI: sin novedades ({len(proyectos)} proyectos ya procesados).")
+    else:
+        logger.info(
+            f"RIGI: {len(nuevos)} proyectos nuevos o modificados "
+            f"(de {len(proyectos)}): {[p['empresa'] for p in nuevos]}"
+        )
+    return [_linea(p, fecha_hoy) for p in nuevos]
 
 
 if __name__ == "__main__":
     from datetime import datetime
     logging.basicConfig(level=logging.INFO)
     hoy = datetime.now().strftime("%Y-%m-%d")
-    proyectos = recopilar_rigi(hoy)
+    proyectos = recopilar_rigi(hoy)  # sin conn: devuelve todos
     print(f"\n=== {len(proyectos)} proyectos RIGI ===\n")
     for p in proyectos:
-        print(p)
+        print(p[:220])
         print()

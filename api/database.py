@@ -1,5 +1,6 @@
-import os
 import logging
+import os
+
 import psycopg2
 from dotenv import load_dotenv
 
@@ -8,77 +9,78 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL").strip() if os.getenv("DATABASE_URL") else None
-UMBRAL_SIMILITUD = 0.85
+
 
 def get_db_connection():
     if not DATABASE_URL:
         logger.error("Falta la variable de entorno DATABASE_URL")
         return None
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        return conn
+        return psycopg2.connect(DATABASE_URL)
     except Exception as e:
         logger.error(f"Error conectando a la base de datos: {e}")
         return None
 
-def es_duplicado(nuevo_embedding, conn):
-    if not conn:
-        return False
-    try:
-        # Serialización para pgvector
-        vector_str = f"[{','.join(map(str, nuevo_embedding))}]"
-        
-        with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT 1 - (embedding <=> %s::vector) AS similitud
-                FROM inversiones
-                ORDER BY similitud DESC
-                LIMIT 1
-            """, (vector_str,))
-            
-            resultado = cursor.fetchone()
-        
-        if resultado is None:
-            return False
-        return resultado[0] >= UMBRAL_SIMILITUD
-    except Exception as e:
-        logger.error(f"Error comprobando duplicados: {e}")
-        return False
 
 def insertar_inversion(inversion, embedding, conn):
+    """Inserta una inversión y devuelve su id, o None si falló."""
     if not conn:
-        return
+        return None
     try:
         vector_str = f"[{','.join(map(str, embedding))}]"
-        
         with conn.cursor() as cursor:
-            cursor.execute("""
-                INSERT INTO inversiones (empresa, descripcion, monto_usd, fecha_anuncio, estado, ubicacion, empleos, embedding)
+            cursor.execute(
+                """
+                INSERT INTO inversiones
+                    (empresa, descripcion, monto_usd, fecha_anuncio, estado, ubicacion, empleos, embedding)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector)
-            """, (
-                inversion.get('empresa'),
-                inversion.get('descripcion'),
-                inversion.get('monto_usd'),
-                inversion.get('fecha_anuncio'),
-                inversion.get('estado'),
-                inversion.get('ubicacion'),
-                inversion.get('empleos'),
-                vector_str
-            ))
+                RETURNING id
+                """,
+                (
+                    inversion.get("empresa"),
+                    inversion.get("descripcion"),
+                    inversion.get("monto_usd"),
+                    inversion.get("fecha_anuncio"),
+                    inversion.get("estado"),
+                    inversion.get("ubicacion"),
+                    inversion.get("empleos"),
+                    vector_str,
+                ),
+            )
+            nuevo_id = cursor.fetchone()[0]
         conn.commit()
-        logger.info(f"Insertada nueva inversión: {inversion.get('empresa')}")
+        logger.info(f"Insertada nueva inversión (id={nuevo_id}): {inversion.get('empresa')}")
+        return nuevo_id
     except Exception as e:
         logger.error(f"Error insertando inversión: {e}")
         conn.rollback()
+        return None
+
 
 def init_db(conn):
+    """
+    Crea/actualiza el esquema. Es idempotente.
+
+    Se ejecuta desde la ingesta (una vez por corrida), NO desde la API: hacer DDL
+    en el primer request de cada contenedor serverless le sumaba latencia a la
+    primera visita y ponía migraciones en el camino crítico de los lectores.
+    """
     if not conn:
         return
     try:
         with conn.cursor() as cursor:
             cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-            
-            cursor.execute("""
+            # unaccent permite buscar "Neuquen" y encontrar "Neuquén".
+            try:
+                cursor.execute("CREATE EXTENSION IF NOT EXISTS unaccent;")
+            except Exception as e:
+                # En algunos planes gestionados no se puede crear. La API tiene
+                # fallback a ILIKE común, así que no es bloqueante.
+                logger.warning(f"No se pudo habilitar unaccent: {e}")
+                conn.rollback()
+
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS inversiones (
                     id            SERIAL PRIMARY KEY,
                     empresa       TEXT NOT NULL,
@@ -93,13 +95,35 @@ def init_db(conn):
                     embedding     VECTOR(768),
                     created_at    TIMESTAMPTZ DEFAULT NOW()
                 );
-            """)
+                """
+            )
 
             cursor.execute("ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS ubicacion TEXT;")
             cursor.execute("ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS empleos INTEGER;")
-            
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_inversiones_created_at ON inversiones (created_at DESC);")
-            
+
+            # Registro de proyectos RIGI ya procesados. Evita reenviar las ~23
+            # filas de la hoja oficial a Gemini en cada corrida: antes eso se
+            # comía ~75% del prompt y producía ~23 descartes por duplicado por
+            # ciclo. Solo se mandan los nuevos o los que cambiaron de contenido.
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS rigi_vistos (
+                    clave     TEXT PRIMARY KEY,
+                    huella    TEXT NOT NULL,
+                    visto_en  TIMESTAMPTZ DEFAULT NOW()
+                );
+                """
+            )
+
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_inversiones_created_at ON inversiones (created_at DESC);"
+            )
+            # El listado ordena por fecha_anuncio, no por created_at.
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_inversiones_fecha_anuncio "
+                "ON inversiones (fecha_anuncio DESC NULLS LAST, created_at DESC);"
+            )
+
         conn.commit()
         logger.info("Base de datos inicializada correctamente")
     except Exception as e:

@@ -2,12 +2,26 @@ name: Flujo de ingesta cada 72hs
 
 on:
   schedule:
-    - cron: '0 4 */3 * *'  # Cada 3 días a las 04:00 UTC (01:00 AM Argentina) - Horario de menor tráfico global
-  workflow_dispatch:        # Permite apretar un botón "Run workflow" manualmente en GitHub
+    # Cada 3 días a las 04:00 UTC (01:00 AM Argentina), horario de menor tráfico.
+    # Nota: '*/3' en el día del mes reinicia el 1, así que entre el 31 y el 1
+    # corre con un día de diferencia. No es un problema: todas las fuentes miran
+    # una ventana de 7 días, así que correr de más solo agrega solapamiento.
+    - cron: '0 4 */3 * *'
+  workflow_dispatch:        # Permite apretar "Run workflow" manualmente en GitHub
+
+# Si una corrida quedó encolada (pasó: una quedó 7 días en "queued"), la nueva
+# la reemplaza en vez de apilarse detrás.
+concurrency:
+  group: ingesta
+  cancel-in-progress: false
 
 jobs:
   ingesta:
     runs-on: ubuntu-latest
+    # Corte duro: la ingesta normal tarda ~2 minutos. Si pasa de 20 es que algo
+    # se colgó, y conviene que falle en rojo antes que quedar encolada.
+    timeout-minutes: 20
+
     steps:
       - name: Descargar código del repositorio
         uses: actions/checkout@v5
@@ -16,11 +30,13 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-          
+          cache: 'pip'
+          cache-dependency-path: api/requirements.txt
+
       - name: Instalar dependencias
         run: pip install -r api/requirements.txt
-        
-      - name: Ejecutar script de ingesta (Apify + Gemini + pgvector)
+
+      - name: Ejecutar script de ingesta (Apify + RSS + RIGI + Gemini + pgvector)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -28,5 +44,14 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
           RIGI_API_KEY: ${{ secrets.RIGI_API_KEY }}
+          # Opcional: si el secret no existe, jev.py se desactiva solo.
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+        # El script devuelve 1 si alguna fuente que debería andar no trajo nada.
+        # El scraper de X estuvo roto desde mayo de 2026 y el workflow seguía en
+        # verde: ese silencio es lo que este exit code viene a romper.
         run: python api/ingesta.py
- 
+
+      - name: Avisar si la ingesta reportó una fuente caída
+        if: failure()
+        run: |
+          echo "::error title=Ingesta degradada::Una fuente no devolvió datos. Revisá el log del paso anterior: el parte final lista el estado de X, Web y RIGI."

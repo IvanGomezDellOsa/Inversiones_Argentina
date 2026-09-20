@@ -48,3 +48,5 @@ yarn-error.log*
 pnpm-debug.log*
 .pnp.*
  
+# Artefacto de build de TypeScript (no versionar)
+*.tsbuildinfo

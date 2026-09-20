@@ -1,8 +1,18 @@
-fastapi
-uvicorn
-psycopg2-binary
-apify-client>=3.0,<4.0
-google-genai==1.70.0
-mangum
-python-dotenv
-requests
+# Versiones acotadas a propósito.
+#
+# El 2026-05-20 salió apify-client 3.0.0, que renombró call(timeout_secs=...) a
+# call(wait_duration=...). El pin era "apify-client>=3.0,<4.0", así que el CI
+# tomó la versión nueva y el scraper de X quedó roto durante casi cuatro meses
+# sin que el workflow fallara. Esa dependencia ya no está: scraper.py consume la
+# API REST v2 de Apify con requests, que es estable y versionada.
+#
+# Para el resto se fija el rango de versión menor: los parches entran solos, los
+# cambios que rompen firma no.
+
+fastapi~=0.115
+uvicorn~=0.32
+psycopg2-binary~=2.9
+google-genai~=1.70
+mangum~=0.19
+python-dotenv~=1.0
+requests~=2.32
