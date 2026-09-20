@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { HeroSection } from "./hero-section";
 import { TelegramCta } from "./telegram-cta";
 import { SearchInput } from "./search-input";
@@ -26,17 +26,37 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-export function InversionesDashboard() {
+interface InversionesDashboardProps {
+  /** Primera página resuelta en el servidor, para que el HTML llegue con contenido. */
+  inversionesIniciales?: Inversion[];
+  totalInicial?: number;
+  hasMoreInicial?: boolean;
+}
+
+export function InversionesDashboard({
+  inversionesIniciales = [],
+  totalInicial = 0,
+  hasMoreInicial = false,
+}: InversionesDashboardProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [inversiones, setInversiones] = useState<Inversion[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [inversiones, setInversiones] = useState<Inversion[]>(inversionesIniciales);
+  // Si el servidor ya trajo datos no hace falta el skeleton inicial.
+  const [isLoading, setIsLoading] = useState(inversionesIniciales.length === 0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(hasMoreInicial);
+  const [total, setTotal] = useState(totalInicial);
   const debouncedQuery = useDebounce(searchQuery, 300);
+
+  // Evita repetir en el cliente el fetch que ya resolvió el servidor.
+  const yaTieneDatosDelServidor = useRef(inversionesIniciales.length > 0);
 
   // Carga inicial y cuando cambia la búsqueda
   useEffect(() => {
+    if (!debouncedQuery.trim() && yaTieneDatosDelServidor.current) {
+      yaTieneDatosDelServidor.current = false;
+      return;
+    }
+
     let active = true;
     setIsLoading(true);
     setInversiones([]);
@@ -119,9 +139,9 @@ export function InversionesDashboard() {
           <SearchInput
             value={searchQuery}
             onChange={setSearchQuery}
-            placeholder="Buscar empresa o sector..."
+            placeholder="Buscar empresa, provincia o sector..."
           />
-          
+
           {debouncedQuery.trim() && !isLoading && (
             <p className="text-sm text-muted-foreground">
               {`${total} ${total === 1 ? "resultado" : "resultados"}`}

@@ -1,16 +1,12 @@
 """
-Fuentes web complementarias a la cuenta de X (@zubel_ok).
+Fuentes web (RSS), en el mismo formato que el resto del pipeline.
 
-Objetivo: diversificar la recolección sin depender de un único curador y sin
-gastar scrapeos de Apify. Cada fuente devuelve una lista de strings en el MISMO
-formato que el scraper de Twitter ("[YYYY-MM-DD] texto"), de modo que se integran
-al pipeline existente sin tocar la lógica de Gemini.
+Los feeds de WordPress devuelven 10 items (~3 días) con una ventana declarada de
+7, así que se pagina con `?paged=N` hasta cubrirla de verdad. Hay medios de
+rubros distintos porque con X caída quedaba solo energía.
 
-Principios de diseño:
-- Fail-safe: si una fuente falla (red, parseo) devuelve [] y NO rompe la ingesta.
-  El sistema degrada con elegancia.
-- Bajo riesgo: EconoJournal vía RSS (XML estándar, solo librería estándar).
-- Timeouts en todas las peticiones.
+Cada fuente es fail-safe por separado: si una se cae devuelve [] y no rompe la
+ingesta.
 """
 
 import re
@@ -22,9 +18,10 @@ from xml.etree import ElementTree as ET
 
 import requests
 
+from relevancia import filtrar_publicaciones
+
 logger = logging.getLogger(__name__)
 
-# User-Agent de navegador real para evitar bloqueos anti-bot básicos.
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -34,10 +31,19 @@ HEADERS = {
 
 DIAS_VENTANA = 7
 TIMEOUT = 20
+MAX_PAGINAS = 4          # tope de seguridad: 4 páginas x 10 items = ~40 notas por medio
+MAX_DESCRIPCION = 400    # recorte para no inflar el prompt
 
-# --- EconoJournal (RSS de WordPress) ---
-ECONOJOURNAL_FEEDS = [
-    "https://econojournal.com.ar/feed/",
+
+# (etiqueta, url, admite ?paged=N). Los de Infobae, Cronista y Ámbito no son
+# WordPress: no paginan, pero traen muchos más items por página.
+FUENTES = [
+    ("EconoJournal", "https://econojournal.com.ar/feed/", True),
+    ("Bichos de Campo", "https://bichosdecampo.com/feed/", True),
+    ("Infocampo", "https://www.infocampo.com.ar/feed/", True),
+    ("Infobae Economía", "https://www.infobae.com/arc/outboundfeeds/rss/category/economia/?outputType=xml", False),
+    ("El Cronista", "https://www.cronista.com/files/rss/negocios.xml", False),
+    ("Ámbito", "https://www.ambito.com/rss/pages/economia.xml", False),
 ]
 
 
@@ -49,71 +55,126 @@ def _limpiar_texto(texto: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(sin_tags)).strip()
 
 
-def _dentro_de_ventana(fecha_dt, dias: int = DIAS_VENTANA) -> bool:
-    """True si la fecha está dentro de la ventana. Si no hay fecha, no descarta."""
-    if fecha_dt is None:
-        return True
-    ahora = datetime.now(timezone.utc)
-    if fecha_dt.tzinfo is None:
-        fecha_dt = fecha_dt.replace(tzinfo=timezone.utc)
-    return fecha_dt >= (ahora - timedelta(days=dias))
+def _parsear_fecha(pub: str):
+    """pubDate de RSS a datetime con zona. None si no se puede."""
+    if not pub:
+        return None
+    try:
+        dt = parsedate_to_datetime(pub)
+    except (TypeError, ValueError):
+        return None
+    if dt is not None and dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
-def scrapear_econojournal(dias: int = DIAS_VENTANA) -> list:
-    """Lee el/los RSS de EconoJournal y devuelve notas recientes como texto."""
+def _leer_pagina(url: str) -> list:
+    """Descarga y parsea un feed. Devuelve los <item> (o <entry> si es Atom)."""
+    resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+    resp.raise_for_status()
+    root = ET.fromstring(resp.content)
+    items = list(root.iter("item"))
+    if not items:
+        # Algunos feeds son Atom en vez de RSS.
+        items = [e for e in root.iter() if e.tag.endswith("}entry") or e.tag == "entry"]
+    return items
+
+
+def _texto_item(item, etiqueta: str, corte):
+    """
+    Convierte un <item> en (fecha, linea) o (None, None) si no sirve.
+    `corte` es el datetime mínimo aceptado.
+    """
+    titulo = _limpiar_texto(item.findtext("title", "") or "")
+    if not titulo:
+        return None, None
+
+    descripcion = _limpiar_texto(
+        item.findtext("description", "")
+        or item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded", "")
+        or item.findtext("summary", "")
+        or ""
+    )[:MAX_DESCRIPCION]
+
+    fecha = _parsear_fecha(item.findtext("pubDate", "") or item.findtext("published", "") or "")
+    if fecha is not None and fecha < corte:
+        return fecha, None
+
+    fecha_str = fecha.strftime("%Y-%m-%d") if fecha else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return fecha, f"[{fecha_str}] ({etiqueta}) {titulo}. {descripcion}".strip()
+
+
+def scrapear_feed(etiqueta: str, url: str, pagina: bool, dias: int = DIAS_VENTANA) -> list:
+    """
+    Lee un feed RSS, paginando mientras siga trayendo notas dentro de la ventana.
+    Cualquier fallo devuelve lo juntado hasta ese momento.
+    """
+    corte = datetime.now(timezone.utc) - timedelta(days=dias)
     resultados = []
-    for url in ECONOJOURNAL_FEEDS:
+    paginas = MAX_PAGINAS if pagina else 1
+
+    for n in range(1, paginas + 1):
+        url_pagina = url if n == 1 else f"{url}{'&' if '?' in url else '?'}paged={n}"
         try:
-            resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-            resp.raise_for_status()
-            root = ET.fromstring(resp.content)
+            items = _leer_pagina(url_pagina)
         except Exception as e:
-            logger.error(f"EconoJournal: fallo al obtener/parsear {url}: {e}")
-            continue
+            # Fallar en la primera página es un problema; en las siguientes suele
+            # ser simplemente el final del feed.
+            nivel = logger.error if n == 1 else logger.debug
+            nivel(f"{etiqueta}: fallo al leer {url_pagina}: {e}")
+            break
 
-        items = list(root.iter("item"))
         if not items:
-            logger.warning(
-                f"EconoJournal: respuesta sin <item> en {url} "
-                f"(¿cambió el formato del feed, p. ej. a Atom?)."
-            )
+            if n == 1:
+                logger.warning(f"{etiqueta}: el feed no trajo items (¿cambió el formato?).")
+            break
 
+        agotado = False
         for item in items:
             try:
-                titulo = _limpiar_texto(item.findtext("title", ""))
-                descripcion = _limpiar_texto(item.findtext("description", ""))
-                pub = item.findtext("pubDate", "")
-
-                fecha_dt = None
-                if pub:
-                    try:
-                        fecha_dt = parsedate_to_datetime(pub)
-                    except Exception:
-                        fecha_dt = None
-
-                if not _dentro_de_ventana(fecha_dt, dias):
-                    continue
-                if not titulo:
-                    continue
-
-                fecha_str = fecha_dt.strftime("%Y-%m-%d") if fecha_dt else "fecha-desconocida"
-                # Recortamos la descripción para no inflar el prompt.
-                descripcion = descripcion[:400]
-                texto = f"[{fecha_str}] (EconoJournal) {titulo}. {descripcion}".strip()
-                resultados.append(texto)
+                fecha, linea = _texto_item(item, etiqueta, corte)
             except Exception as e:
-                logger.debug(f"EconoJournal: item descartado: {e}")
+                logger.debug(f"{etiqueta}: item descartado: {e}")
                 continue
+            if linea:
+                resultados.append(linea)
+            elif fecha is not None:
+                # Ya pasamos la ventana: no tiene sentido seguir paginando.
+                agotado = True
 
-    logger.info(f"EconoJournal: {len(resultados)} notas recientes recopiladas.")
+        if agotado:
+            break
+
+    logger.info(f"{etiqueta}: {len(resultados)} notas dentro de los últimos {dias} días.")
     return resultados
 
 
 def recopilar_fuentes_web(dias: int = DIAS_VENTANA) -> list:
-    """Combina todas las fuentes web. Cada una es fail-safe por separado."""
-    publicaciones = []
-    publicaciones.extend(scrapear_econojournal(dias))
-    logger.info(f"Fuentes web: {len(publicaciones)} publicaciones en total.")
+    """
+    Combina todas las fuentes y deja solo las notas que parecen hablar de una
+    inversión. Cada fuente es fail-safe por separado.
+    """
+    crudas = []
+    caidas = []
+    for etiqueta, url, pagina in FUENTES:
+        try:
+            notas = scrapear_feed(etiqueta, url, pagina, dias)
+        except Exception as e:
+            logger.error(f"{etiqueta}: error inesperado: {e}")
+            notas = []
+        if not notas:
+            caidas.append(etiqueta)
+        crudas.extend(notas)
+
+    publicaciones, descartadas = filtrar_publicaciones(crudas)
+
+    if caidas:
+        logger.warning(f"Fuentes web sin resultados: {', '.join(caidas)}")
+    logger.info(
+        f"Fuentes web: {len(crudas)} notas leídas de "
+        f"{len(FUENTES) - len(caidas)}/{len(FUENTES)} medios; "
+        f"{len(publicaciones)} pasan el filtro de relevancia ({descartadas} descartadas)."
+    )
     return publicaciones
 
 
@@ -122,5 +183,5 @@ if __name__ == "__main__":
     web = recopilar_fuentes_web()
     print(f"\n=== {len(web)} publicaciones web ===\n")
     for p in web:
-        print(p)
+        print(p[:200])
         print()

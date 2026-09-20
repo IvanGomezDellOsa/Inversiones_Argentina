@@ -1,116 +1,158 @@
-[English](README.en.md) | [Español](README.md)
+[Español](README.md) | [English](README.en.md)
 
-# Inversiones en Argentina — Aggregator of Private Investments in Argentina
+# Inversiones en Argentina — Private Investment Aggregator for Argentina
 
 🌐 **Production deploy:** [inversionesargentina.com.ar](https://inversionesargentina.com.ar)
 📢 **Telegram channel:** [t.me/inversiones_en_argentina](https://t.me/inversiones_en_argentina)
 
-An automated web aggregator that collects, structures and lists private investments made or announced in Argentina. The system combines scraping of specialized sources on Twitter/X, semantic search on Google via generative AI and a REST API to expose the data to a modern frontend as an interactive timeline. Every 72 hours, the newly detected investments are automatically published both on the website ([inversionesargentina.com.ar](https://inversionesargentina.com.ar)) and on the Telegram channel ([@inversiones_en_argentina](https://t.me/inversiones_en_argentina)).
+Automated web aggregator that collects, structures and lists private investments made or announced in Argentina. It combines the official RIGI registry, scraping of specialised X accounts, RSS feeds from outlets across different sectors, and semantic search on Google via generative AI, exposing the data through a REST API to a frontend that renders an interactive timeline. Every 72 hours, newly detected investments are published automatically to both the website and the Telegram channel.
 
 ---
 
 ## 🏗️ System Architecture
 
 ```text
-GitHub Actions (cron cada 72hs)
+GitHub Actions (cron every 72h)
 ↓
-Apify API (scraper Twitter/X)
+┌─────────────────┬──────────────────────┬─────────────────────┐
+│ Apify REST API  │ RSS from 6 outlets   │ Official RIGI sheet │
+│ X: @zubel_ok    │ energy, agriculture, │ (Ministry of        │
+│    @LuisCaputoAR│ business, general    │  Economy) incremental│
+└─────────────────┴──────────────────────┴─────────────────────┘
 ↓
-Gemini 2.5 Flash + Google Search Grounding
+Relevance filter (deterministic, zero cost)
 ↓
-Validación y normalización de datos
+Gemini 2.5 Flash + Google Search Grounding  →  JSON extraction
 ↓
-gemini-embedding-2-preview → pgvector (deduplicación semántica)
+Validation, normalisation and non-productive-operation filter
+↓
+Jev (TypeSafe AI) — optional: semantic noise filter
+↓
+Deduplication: pgvector retrieves candidates + identity/Jev decide
 ↓
 Neon PostgreSQL
 ↓
-Telegram Bot API (publicación automática en canal)
+Telegram Bot API (automatic channel publishing)
 ↓
 FastAPI (Mangum) → Vercel Serverless
 ↓
-Next.js Frontend (inversionesargentina.com.ar)
+Server-rendered Next.js (inversionesargentina.com.ar)
 ```
 
 ---
 
 ## 🛠️ Tech Stack
 
-### Backend / Flow
+### Backend / Pipeline
 
 | Layer | Technology |
-|------|------------|
+|-------|------------|
 | **Automation** | GitHub Actions (cron every 72h, 01:00 AM ARG) |
-| **Scraping** | Apify — `danek/twitter-scraper-ppr` |
+| **X scraping** | Apify REST API v2 (`danek/twitter-scraper`, configurable) |
+| **Web sources** | RSS from EconoJournal, Bichos de Campo, Infocampo, Infobae Economía, El Cronista and Ámbito |
+| **Official source** | Public Google Sheet from the RIGI portal (argentina.gob.ar) |
 | **Generative AI** | Google Gemini 2.5 Flash with Google Search Grounding |
+| **Semantic judgement** | Jev (TypeSafe AI) — optional, enabled by environment variable |
 | **Embeddings** | `gemini-embedding-2-preview` (768 dimensions) |
-| **Database** | Neon PostgreSQL with `pgvector` extension |
+| **Database** | Neon PostgreSQL with `pgvector` and `unaccent` extensions |
 | **Notifications** | Telegram Bot API |
 | **API** | Python, FastAPI (async), Mangum (serverless adapter) |
-| **API Deploy** | Vercel Serverless Functions |
+| **API deploy** | Vercel Serverless Functions |
 
 ### Frontend
 
 | Layer | Technology |
-|------|------------|
-| **Framework** | Next.js 16 (App Router) |
+|-------|------------|
+| **Framework** | Next.js 16 (App Router, server rendering with ISR) |
 | **Language** | TypeScript |
 | **Styling** | Tailwind CSS v4 |
-| **Animations** | Framer Motion |
-| **UI Components** | shadcn/ui + Radix UI |
+| **Animation** | Framer Motion |
+| **UI components** | shadcn/ui + Radix UI |
 | **Analytics** | Vercel Analytics |
 | **Deploy** | Vercel |
 
 ---
 
-## ⚙️ Ingestion flow every 72h
+## ⚙️ The 72-hour ingestion pipeline
 
-The heart of the project is a fully automated flow that runs every 72 hours:
+**1. Multi-source collection**
 
-**1. Scraping Twitter/X via Apify**
-Runs multiple queries about investments from selected accounts, filters tweets from the last 3 days and deduplicates by ID.
+- **X via Apify.** Pulls `@zubel_ok` (an investment-announcement curator) and `@LuisCaputoAR` (Ministry of Economy) using X's advanced search syntax, excluding replies and filtering to a 7-day window. It calls the **REST API directly rather than the SDK**: the SDK renamed an argument in a minor release and left the scraper broken for months without anything failing.
+- **RSS from six outlets** across different sectors, paginated until the 7-day window is actually covered. A WordPress feed returns only 10 items — about 3 days — so without pagination the declared window was unreachable.
+- **Official RIGI registry**, **incrementally**: a fingerprint of each project is stored and only new ones, or ones whose amount, jobs or description changed, are re-sent.
 
-**2. Processing with Gemini + Grounding**
-The prompt sends the scraped tweets as SOURCE 1 and instructs Gemini to search Google for additional news from the period as SOURCE 2. The model returns a structured JSON array with fields `empresa`, `descripcion`, `monto_usd`, `fecha_anuncio`, `estado`, `ubicacion` and `empleos`.
+**2. Relevance filter**
+Before spending a single Gemini token, a deterministic filter drops the structural noise in the feeds (daily price quotes, weather, sports). It favours recall: when in doubt it lets content through, because over-filtering means losing a real investment.
 
-Explicit exclusions: purely state investments, acquisitions abroad, sector projections without a concrete company and abstract internal financial movements.
+**3. Processing with Gemini + Grounding**
+The prompt sends the collected material as SOURCE 1 and instructs Gemini to search Google for additional news from the period as SOURCE 2, explicitly targeting the sectors the owned sources cover poorly. It returns a JSON array with `empresa`, `descripcion`, `monto_usd`, `fecha_anuncio`, `estado`, `ubicacion` and `empleos`.
 
-**3. Validation and normalization**
-Each record goes through type validation, valid states (`confirmada` / `anunciada` / `en_evaluacion`), ISO date format and presence of required fields.
+**4. Validation and non-investment filtering**
+Beyond validating types, states and dates, a deterministic net rejects what is not a new productive investment: bond and note issuances, loans, company incorporations lifted from the Official Gazette (with capital denominated in pesos), share purchases and M&A, contracts won by suppliers, product or app launches, and aggregate portfolio figures. Suspiciously small amounts are nulled out: they are almost always pesos read as dollars.
 
-**4. Semantic deduplication with pgvector**
-A 768-dimension embedding is generated by combining `empresa + descripcion`. The cosine distance is computed against all existing embeddings. If the similarity exceeds `0.85`, the record is discarded as a duplicate.
+**5. Semantic judgement with Jev (optional)**
+When `TYPESAFE_API_KEY` is set, each record goes through a [Jev](https://typesafe.ai) Noul that returns a calibrated probability of it being a concrete private investment. Without the variable the pipeline runs exactly the same on its deterministic layers.
 
-**5. Insertion into Neon PostgreSQL**
-Unique records are persisted with their vector embedding for future deduplications.
+**6. Deduplication**
+The embedding is used to **retrieve** the k nearest neighbours, not to decide. The decision is made, in order, by: near-identical text, Jev answering "are these the same project?", and three deterministic heuristics (same normalised company with very high similarity, same company with an identical amount, or a shared distinctive proper noun).
 
-**6. Automatic publication on Telegram**
-As part of the same ingestion flow, the newly inserted records are published simultaneously on the [@inversiones_en_argentina](https://t.me/inversiones_en_argentina) channel via Telegram Bot API, with a structured summary of each investment detected in the cycle. Publication on Telegram and availability on the frontend happen at the same moment, since both consume the data just persisted in the database.
+> **Why a similarity threshold isn't enough.** Measuring the real duplicates found in production, their cosine similarity ranged from 0.758 to 0.846 — and legitimately distinct projects live in that same band: Pampa's urea plant and Profertil's, Pluspetrol and Vista, Coral Energía and Edesur. A single embedding over such a thematically narrow corpus (Vaca Muerta, lithium, copper, RIGI) compresses the vector space until two different projects in the same sector look as alike as the same project reported twice. No threshold separates them; the actual question has to be asked.
+
+**7. Insertion and publishing**
+Unique records are persisted with their embedding and published to the Telegram channel at the same time.
+
+**8. Status report**
+Each run ends by printing the status of every source and exits non-zero if one that should be working returned nothing. A cron job that fails green is worse than one that fails red.
 
 ---
 
 ## 🎯 Features
 
 **Interactive timeline**
-- Cards ordered by `fecha_anuncio` descending with staggered animations (Framer Motion)
-- Status indicators with differentiated colors: confirmed (green), announced (blue), under evaluation (yellow)
-- Smart amount formatting: `USD 40M`, `USD 1.2B`, or exact amount for smaller figures
+- Cards sorted by `fecha_anuncio` descending with staggered animations (Framer Motion)
+- Colour-coded status indicators: confirmed (green), announced (blue), under evaluation (yellow)
+- Smart amount formatting: `USD 40M`, `USD 1.2B`, or the exact figure for smaller amounts
 - Province and jobs badges when available
+- The first page is server-rendered, so the content is indexable
 
 **Real-time search**
-- Input with debounce (300ms) that queries the API with the `?q=` parameter
-- Simultaneous ILIKE search over `empresa` and `descripcion`
-- Results counter and loading state with animated skeletons
+- Debounced input (300ms) querying the API with a `?q=` parameter
+- Searches across `empresa`, `descripcion` **and** `ubicacion`, accent-insensitively: typing "Neuquen" finds investments in Neuquén
+- Result counter and loading state with animated skeletons
 
 **REST API**
-- `GET /api/inversiones` — Lists all investments ordered by date
-- `GET /api/inversiones?q={query}` — Search by company or description
-- Automatic documentation at `/api/docs`
+- `GET /api/inversiones` — Paginated list ordered by date
+- `GET /api/inversiones?q={query}` — Search by company, description or province
+- Auto-generated documentation at `/api/docs`
+
+---
+
+## 🔧 Getting started
+
+```bash
+cp .env.example .env    # fill in credentials
+pip install -r api/requirements.txt
+npm install
+
+python api/ingesta.py   # run the full pipeline once
+npm run dev             # frontend on localhost:3000
+```
+
+Each module under `api/` runs standalone to diagnose a single source:
+
+```bash
+python api/scraper.py        # what X returns
+python api/fuentes_web.py    # what the RSS feeds return
+python api/fuentes_rigi.py   # what the official registry returns
+python api/relevancia.py     # relevance-filter test
+python api/jev.py            # Jev test (if configured)
+```
 
 ---
 
 ## 📝 Development Notes
 
-Development assisted by LLMs for component layout, writing animations and generating boilerplate code. The decisions that truly define the product — design of the AI flow, semantic deduplication strategy with pgvector, ingestion architecture, design of the Gemini prompt with the exclusions of state investments, choice of similarity thresholds and the integration of Google Search Grounding as a second data source — were made and orchestrated by me.
+LLM-assisted development for component scaffolding, animation code and boilerplate. The decisions that actually define the product — the AI pipeline design, the deduplication strategy, the ingestion architecture, the prompt design with its exclusions, the choice of sources and thresholds, and the integration of Google Search Grounding as a second data source — were made and orchestrated by me.
 
 ---
 

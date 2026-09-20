@@ -84,12 +84,16 @@ export function HeroSection({ videoSrc }: HeroSectionProps) {
           {videoSrc ? (
             <video
               src={videoSrc}
+              poster="/bandera-poster.jpg"
               autoPlay
               loop
               muted
               playsInline
+              preload="metadata"
+              // Es decorativo: no aporta información que no esté en el texto.
+              aria-hidden="true"
+              tabIndex={-1}
               className="w-full h-full object-cover"
-              aria-label="Bandera argentina flameando"
             />
           ) : (
             <div className="w-full h-full flex flex-col" aria-label="Bandera de Argentina">
