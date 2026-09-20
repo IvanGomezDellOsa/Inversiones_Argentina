@@ -1,61 +1,13 @@
 """
 Deduplicación de inversiones.
 
-POR QUÉ SE REESCRIBIÓ ESTO
---------------------------
-El esquema anterior era: generar un embedding de `empresa + descripcion`,
-calcular la similitud coseno contra todo lo guardado y descartar si superaba
-0.85. La auditoría de septiembre de 2026 midió los 12 duplicados reales que
-había en la base: su similitud iba de **0.758 a 0.846**. Todos por debajo del
-umbral. Con 0.85 no había un solo par por encima en toda la tabla: la
-deduplicación semántica nunca se activó sobre los datos guardados.
+El embedding se usa para RECUPERAR candidatos, no para decidir. Un umbral de
+similitud no sirve acá: sobre los datos de producción, los duplicados reales
+caían entre 0.758 y 0.846, la misma banda donde hay proyectos distintos.
 
-Y bajarlo no arregla nada. En la banda 0.84-0.85 conviven duplicados genuinos
-(Sidersa/Sidersa, Minas Argentinas, Meitner) con proyectos legítimamente
-distintos (la planta de urea de Pampa vs. la de Profertil, Pluspetrol vs. Vista,
-Coral Energía vs. Edesur). Un solo embedding sobre un corpus tan temático —casi
-todo Vaca Muerta, litio, cobre y RIGI— comprime el espacio vectorial: dos
-proyectos distintos del mismo rubro se parecen tanto como el mismo proyecto
-contado dos veces. No existe un umbral que los separe.
-
-CÓMO FUNCIONA AHORA
--------------------
-El embedding pasa a ser lo que sabe hacer bien —RECUPERAR candidatos— y la
-decisión la toma otra cosa:
-
-  1. Se traen los k vecinos más cercanos por coseno (umbral bajo, 0.70, para no
-     perder ninguno: el duplicado más lejano que conocemos estaba en 0.758).
-  2. Texto casi idéntico (>= 0.93): duplicado sin preguntar. Es el caso de una
-     fuente que reenvía la misma fila, como hacía RIGI en cada corrida.
-  3. Si hay Jev configurado, se le pregunta lo que realmente importa: "¿son el
-     mismo proyecto?". Es la pregunta correcta en vez de una aproximación por
-     distancia, y resuelve el caso difícil: el mismo proyecto con nombres de
-     empresa distintos (McEwen Cooper / Andes Corporación Minera = Los Azules).
-  4. Sin Jev, tres heurísticas deterministas: misma empresa con similitud muy
-     alta; misma empresa con el mismo monto exacto; o un nombre propio
-     distintivo compartido (el topónimo o el nombre del proyecto).
-
-QUÉ TAN BIEN FUNCIONA (medido sobre los 143 registros de producción)
---------------------------------------------------------------------
-Reproduciendo los 12 duplicados reales y 19 pares de proyectos distintos:
-
-    esquema anterior (umbral 0.85)  ->  0/12 detectados
-    capa determinista de acá        ->  6/12 detectados, 0 falsos positivos
-    + Jev                           ->  cubre los 6 restantes
-
-Los 6 que la capa determinista no puede resolver son los que exigen juicio
-semántico de verdad: "Pampa Energía" y "Fertil Pampa" son la misma planta de
-urea; "BHP y Lundin Mining" y "Vicuña Argentina" son el mismo proyecto de cobre.
-Ningún umbral ni heurística de texto los separa de dos proyectos distintos de la
-misma empresa — es exactamente el mismo muro que encontró la auditoría, y es la
-razón concreta por la que se sumó Jev.
-
-CRITERIO ANTE LA DUDA
----------------------
-Un falso positivo acá significa NO publicar una inversión real, en silencio.
-Eso es peor que publicar un duplicado, que se ve y se corrige. Por eso los
-umbrales de las heurísticas son conservadores, se prefiere detectar de menos, y
-los casos que quedan cerca se loguean para poder revisarlos a mano.
+La decisión la toman, en orden: texto casi idéntico, Jev, y tres heurísticas
+deterministas. Ante la duda se publica: un falso positivo es una inversión real
+que se pierde en silencio, peor que un duplicado visible.
 """
 
 import logging
@@ -102,10 +54,7 @@ def normalizar(texto) -> str:
 
 
 def clave_identidad(empresa) -> str:
-    """
-    Nombre comercial normalizado, sin sufijos societarios ni puntuación.
-    Es la clave de identidad más barata y precisa que tenemos.
-    """
+    """Nombre comercial normalizado, sin sufijos societarios ni puntuación."""
     base = normalizar(empresa)
     base = _SUFIJOS.sub(" ", base)
     base = re.sub(r"[^a-z0-9 ]+", " ", base)
@@ -114,12 +63,9 @@ def clave_identidad(empresa) -> str:
 
 def misma_empresa(a, b) -> bool:
     """
-    True si dos nombres de empresa designan a la misma.
-    Se compara por contención de tokens, no por igualdad exacta, porque la misma
-    empresa llega escrita de formas distintas según la fuente: "Sidersa",
-    "Sidersa Acería" y "Sidersa Acería s.d.e." son la misma; "Vista" y "Vista
-    Energy" también. En cambio "Pampa Energía" y "Fertil Pampa" no, porque
-    ninguno de los dos conjuntos de tokens contiene al otro.
+    True si dos nombres designan a la misma empresa. Compara por contención de
+    tokens: "Sidersa" y "Sidersa Acería s.d.e." sí; "Pampa Energía" y "Fertil
+    Pampa" no.
     """
     ka, kb = clave_identidad(a), clave_identidad(b)
     if not ka or not kb:
@@ -132,12 +78,9 @@ def misma_empresa(a, b) -> bool:
 
 # --- Nombres propios distintivos -----------------------------------------------
 
-# Términos que aparecen en muchísimos registros y por lo tanto NO distinguen un
-# proyecto de otro. Incluye tres grupos:
-#  - Provincias y polos industriales. Bahía Blanca, Escobar o Vaca Muerta
-#    concentran decenas de proyectos DISTINTOS: compartir el lugar no dice nada.
-#  - Vocabulario del rubro (minera, gasoducto, litio, RIGI...).
-#  - Palabras corrientes que aparecen en mayúscula por empezar una oración.
+# Términos que no distinguen un proyecto de otro: provincias y polos
+# industriales (Bahía Blanca concentra decenas de proyectos distintos),
+# vocabulario del rubro, y palabras corrientes que caen en mayúscula.
 _NO_DISTINTIVOS = {
     # geografía y polos industriales
     "vaca", "muerta", "argentina", "argentino", "argentinas", "buenos", "aires",
@@ -172,13 +115,8 @@ _FIN_ORACION = re.compile(r"(?:^|[.!?¡¿:;]\s*|\n)\s*")
 
 def _nombres_propios(texto) -> set:
     """
-    Tokens en mayúscula que identifican de verdad a un proyecto: el topónimo o
-    el nombre propio — "Gualcamayo", "Veladero", "Azules", "Timbúes", "Aranda".
-
-    Se descartan los que abren oración: si no se hiciera, "Contempla",
-    "Construcción" o "Incluye" contarían como nombres propios y dos proyectos
-    sin relación quedarían emparentados. Ese error hacía que la planta de urea
-    de Pampa y la de Profertil parecieran el mismo proyecto.
+    Tokens en mayúscula que identifican a un proyecto ("Gualcamayo", "Azules").
+    Se descartan los que abren oración, que van en mayúscula por ortografía.
     """
     if not texto:
         return set()
@@ -199,12 +137,8 @@ def _nombres_propios(texto) -> set:
 
 def _comparten_nombre_propio(a: dict, b: dict) -> set:
     """
-    Nombres propios distintivos en común entre dos registros.
-
-    Se miran solo las descripciones, y se restan los tokens del nombre de las
-    empresas: que dos registros compartan el nombre de la empresa no dice nada
-    sobre si son el mismo PROYECTO (YPF tiene seis proyectos distintos). La
-    identidad de empresa la resuelve `misma_empresa`, que es otra regla.
+    Nombres propios en común, sin contar los de la empresa: compartir empresa no
+    dice nada sobre el proyecto (YPF tiene seis distintos).
     """
     propios_a = _nombres_propios(a.get("descripcion")) - set(clave_identidad(a.get("empresa")).split())
     propios_b = _nombres_propios(b.get("descripcion")) - set(clave_identidad(b.get("empresa")).split())
@@ -213,13 +147,8 @@ def _comparten_nombre_propio(a: dict, b: dict) -> set:
 
 def _mismo_monto(a: dict, b: dict) -> bool:
     """
-    True si ambos registros declaran exactamente el mismo monto en dólares.
-
-    Es una señal fuerte que no depende de la similitud del texto: que una misma
-    empresa tenga dos proyectos DISTINTOS por exactamente la misma cifra al
-    dólar es rarísimo. En cambio es lo habitual cuando la misma inversión entra
-    dos veces desde fuentes distintas (Sidersa 286M dos veces, Meitner 1.200M
-    dos veces).
+    Mismo monto exacto en dólares. Señal fuerte e independiente del texto: dos
+    proyectos distintos de una misma empresa rara vez coinciden al dólar.
     """
     ma, mb = a.get("monto_usd"), b.get("monto_usd")
     if ma is None or mb is None:
@@ -233,10 +162,7 @@ def _mismo_monto(a: dict, b: dict) -> bool:
 # --- Recuperación de vecinos ---------------------------------------------------
 
 def vecinos_similares(embedding, conn, k: int = VECINOS_K, umbral: float = UMBRAL_RECUPERACION):
-    """
-    Los k registros más parecidos por distancia coseno, de mayor a menor.
-    Devuelve una lista de dicts con los campos del registro más `similitud`.
-    """
+    """Los k registros más parecidos por coseno, de mayor a menor similitud."""
     if not conn or not embedding:
         return []
     vector = f"[{','.join(map(str, embedding))}]"
@@ -282,27 +208,27 @@ def es_duplicado(inversion: dict, embedding, conn):
     if not vecinos:
         return False, "sin vecinos por encima del umbral de recuperación"
 
-    usar_jev = jev.disponible()
+    def etiquetar(v):
+        return f"id={v['id']} ({v['empresa']}) sim={v['similitud']:.3f}"
 
+    # 1. Texto casi idéntico: la misma fuente reenviando la misma fila.
+    for v in vecinos:
+        if v["similitud"] >= UMBRAL_IDENTICO:
+            return True, f"texto casi idéntico a {etiquetar(v)}"
+
+    # 2. Jev, una sola llamada para todos los vecinos.
+    if jev.disponible():
+        match, p = jev.cual_es_el_mismo_proyecto(inversion, vecinos)
+        if match is not None:
+            return True, f"Jev: mismo proyecto que {etiquetar(match)} (p={p:.2f})"
+        if p is not None:
+            return False, f"Jev descartó los {len(vecinos)} vecinos (máx p={p:.2f})"
+        # p None = Jev no respondió; caemos a las heurísticas.
+
+    # 3. Heurísticas deterministas.
     for v in vecinos:
         sim = v["similitud"]
-        etiqueta = f"id={v['id']} ({v['empresa']}) sim={sim:.3f}"
-
-        # 1. Texto casi idéntico: la misma fuente reenviando la misma fila.
-        if sim >= UMBRAL_IDENTICO:
-            return True, f"texto casi idéntico a {etiqueta}"
-
-        # 2. Jev: la pregunta correcta, no una aproximación por distancia.
-        if usar_jev:
-            veredicto, p = jev.es_mismo_proyecto(inversion, v)
-            if veredicto is True:
-                return True, f"Jev: mismo proyecto que {etiqueta} (p={p:.2f})"
-            if veredicto is False:
-                # Jev descartó este vecino; seguimos con el siguiente.
-                continue
-            # veredicto None = Jev no respondió; caemos a las heurísticas.
-
-        # 3. Heurísticas deterministas.
+        etiqueta = etiquetar(v)
         es_misma_empresa = misma_empresa(inversion.get("empresa"), v["empresa"])
 
         if es_misma_empresa and sim >= UMBRAL_MISMA_EMPRESA:

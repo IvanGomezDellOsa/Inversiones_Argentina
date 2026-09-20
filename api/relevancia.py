@@ -1,18 +1,12 @@
 """
-Pre-filtro de relevancia para el material crudo de las fuentes.
+Pre-filtro de relevancia para el material crudo de los RSS.
 
-Para qué existe: paginar los RSS y sumar medios llevó el volumen de ~10 notas
-por corrida a 200+. La mayoría es ruido estructural (cotizaciones diarias,
-clima, deportes, política) que infla el prompt de Gemini, lo hace más caro y
-diluye la señal.
+Paginar y sumar medios llevó el volumen a 200+ notas por corrida, casi todo
+ruido estructural (cotizaciones, clima, deportes) que infla el prompt.
 
-Criterio de diseño: este filtro prioriza RECALL sobre precisión. Dejar pasar una
-nota irrelevante cuesta unos tokens; descartar un anuncio real significa perder
-una inversión, que es exactamente el problema que la auditoría encontró. Ante la
-duda, pasa. La precisión se resuelve después, sobre los registros ya extraídos
-(ver `jev.py` y `validar_registro` en `ingesta.py`).
-
-Es deterministico y gratis: sin llamadas a API.
+Prioriza recall sobre precisión: dejar pasar una nota de más cuesta tokens,
+descartar un anuncio real cuesta una inversión. La precisión la resuelven después
+`jev.py` y `validar_registro`.
 """
 
 import re
@@ -60,11 +54,8 @@ _RUIDO = (
 
 def es_candidato_inversion(texto: str) -> bool:
     """
-    True si el texto merece llegar al prompt de Gemini.
-
-    Se usa sobre las líneas ya formateadas de las fuentes RSS. Las líneas de X y
-    de RIGI NO pasan por acá: las cuentas de X ya vienen curadas o filtradas por
-    query, y RIGI es un registro oficial donde todo es una inversión.
+    True si el texto merece llegar al prompt de Gemini. Solo se aplica a los RSS:
+    X ya viene filtrado por query y en RIGI todo es una inversión.
     """
     if not texto:
         return False

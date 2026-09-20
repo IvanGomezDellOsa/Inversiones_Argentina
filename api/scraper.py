@@ -1,23 +1,13 @@
 """
-Scraping de X (Twitter) vía Apify.
+Scraping de X (Twitter) vía la API REST de Apify.
 
-Se consume la API REST de Apify directamente con `requests`, NO el SDK
-`apify-client`. La razón es concreta: el 2026-05-20 salió apify-client 3.0.0,
-que renombró `call(timeout_secs=...)` a `call(wait_duration=...)`. Como
-requirements.txt pedía `apify-client>=3.0,<4.0`, el CI tomó la versión nueva y
-el scraper quedó tirando excepciones en cada corrida durante meses. La API REST
-v2 de Apify está versionada y es estable; el SDK rompe entre versiones menores.
-Una dependencia menos y un modo de falla menos.
+Se usa la API REST y no el SDK `apify-client`: una versión menor del SDK renombró
+un argumento de `call()` y dejó el scraper roto durante meses. La REST v2 es
+estable y ya dependemos de `requests`.
 
-Además, el actor original (`danek/twitter-scraper-ppr`) fue eliminado del store,
-así que acá se define una CADENA de actores: si el primero no existe o falla, se
-prueba el siguiente. Cada actor tiene su propio formato de entrada y de salida,
-así que cada uno trae su adaptador.
-
-El scraping NUNCA revienta la ingesta: ante cualquier fallo devuelve lo que haya
-podido juntar. Pero sí deja registro explícito del estado de cada cuenta, para
-que `ingesta.py` pueda avisar en vez de fallar en silencio (que es exactamente
-lo que pasó entre mayo y septiembre de 2026).
+Los actores desaparecen del store (ya pasó una vez), así que hay una cadena: si
+el primero falla se prueba el siguiente. Nunca revienta la ingesta, pero deja
+registro del estado de cada cuenta para poder avisar.
 """
 
 import os
@@ -45,17 +35,9 @@ ESPERA_ACTOR = 180
 TIMEOUT_HTTP = ESPERA_ACTOR + 60
 
 
-# --- Cuentas de X que seguimos -------------------------------------------------
-#
-# `query` usa la sintaxis de búsqueda avanzada de X, que el actor pasa tal cual.
-# `-filter:replies` saca las respuestas: en ambas cuentas son conversación suelta
-# ("Excelente Daniel"), no anuncios, y en el plan FREE cada uno de los 20 slots
-# que gastamos en una respuesta es un anuncio que no traemos.
-#
-# @zubel_ok cura anuncios de inversión todo el día: su feed entero sirve, no hace
-# falta filtrar por palabras.
-# @LuisCaputoAR publica sobre todo macro (exportaciones, superávit), así que se
-# filtra por términos para que los 20 slots caigan en anuncios reales.
+# Cuentas de X que seguimos. `query` usa la sintaxis de búsqueda avanzada de X.
+# `-filter:replies` saca las respuestas: son conversación suelta, y en el plan
+# FREE cada uno de los 20 slots gastado ahí es un anuncio que no traemos.
 
 @dataclass
 class CuentaX:
@@ -72,23 +54,17 @@ _TERMINOS_INVERSION = (
 )
 
 CUENTAS = [
-    # @zubel_ok es el curador principal: su feed entero sirve, pero mezcla política
-    # y posts personales. Van dos consultas — la cronológica cruda y una filtrada
-    # por términos de inversión que rescata lo que quedó fuera de los últimos 20.
-    # Los posts repetidos entre ambas se descartan por id.
+    # @zubel_ok mezcla anuncios con política y posts personales: van dos consultas,
+    # la cronológica cruda y una filtrada que rescata lo que quedó fuera de los 20.
     CuentaX(handle="zubel_ok", query="from:zubel_ok -filter:replies"),
     CuentaX(handle="zubel_ok", query=f"from:zubel_ok ({_TERMINOS_INVERSION}) -filter:replies"),
-    # @LuisCaputoAR publica sobre todo macro (exportaciones, superávit fiscal),
-    # así que acá el filtro por términos no es un rescate sino la consulta principal.
+    # @LuisCaputoAR publica sobre todo macro, así que el filtro es la consulta
+    # principal, no un rescate.
     CuentaX(handle="LuisCaputoAR", query=f"from:LuisCaputoAR ({_TERMINOS_INVERSION} OR anuncio) -filter:replies"),
 ]
 
 
-# --- Adaptadores de actores ----------------------------------------------------
-#
-# Cada actor del store tiene su propio esquema. Para poder cambiar de actor sin
-# tocar el resto del código, cada uno trae cómo se le arma la entrada y cómo se
-# lee lo que devuelve.
+# Cada actor del store tiene su propio esquema de entrada.
 
 def _input_danek(cuenta: CuentaX) -> dict:
     return {"query": cuenta.query, "search_type": "Latest", "max_posts": cuenta.max_posts}
@@ -110,8 +86,7 @@ ACTORES = [
     Actor(id="apidojo~twitter-scraper-lite", construir_input=_input_apidojo, nombre="apidojo/twitter-scraper-lite"),
 ]
 
-# Permite cambiar de actor por variable de entorno, sin necesidad de un deploy,
-# el día que este también desaparezca del store.
+# Permite cambiar de actor por variable de entorno, sin deploy.
 _ACTOR_OVERRIDE = os.getenv("APIFY_ACTOR_ID")
 if _ACTOR_OVERRIDE:
     _override = _ACTOR_OVERRIDE.replace("/", "~")
@@ -256,7 +231,7 @@ def _recolectar_cuenta(cuenta: CuentaX, limite_fecha: datetime, ids_vistos: set)
 
 @dataclass
 class ResultadoX:
-    """Lo recolectado más el estado de cada cuenta, para poder avisar si se cayó."""
+    """Lo recolectado más el estado de cada cuenta."""
     lineas: list = field(default_factory=list)
     errores: dict = field(default_factory=dict)   # handle -> mensaje de error
     cuentas_ok: list = field(default_factory=list)

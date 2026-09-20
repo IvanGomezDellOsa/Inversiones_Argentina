@@ -1,25 +1,12 @@
 """
-Fuentes web (RSS) complementarias a las cuentas de X.
+Fuentes web (RSS), en el mismo formato que el resto del pipeline.
 
-Objetivo: diversificar la recolección sin depender de un único curador y sin
-gastar corridas de Apify. Cada fuente devuelve una lista de strings en el MISMO
-formato que el resto del pipeline ("[YYYY-MM-DD] (Medio) texto"), así que se
-integran sin tocar la lógica de Gemini.
+Los feeds de WordPress devuelven 10 items (~3 días) con una ventana declarada de
+7, así que se pagina con `?paged=N` hasta cubrirla de verdad. Hay medios de
+rubros distintos porque con X caída quedaba solo energía.
 
-Dos cosas que la auditoría de septiembre de 2026 dejó en evidencia:
-
-1. El feed de WordPress devuelve solo 10 items, que en EconoJournal son ~3 días.
-   Con `DIAS_VENTANA = 7` declarado, la ventana era inalcanzable: cada corrida
-   veía menos de la mitad de lo que decía mirar. WordPress acepta `?paged=N`,
-   así que ahora se paginan varias páginas hasta cubrir la ventana de verdad.
-
-2. Con la cuenta de X caída, EconoJournal quedó como única fuente viva, y es un
-   medio de energía. Agro, retail, industria y tecnología desaparecieron del
-   sitio durante meses. Por eso acá hay varias fuentes de rubros distintos.
-
-Principios: cada fuente es fail-safe por separado (si una se cae devuelve [] y
-no rompe la ingesta), todas con timeout, y se corta de paginar apenas aparecen
-items más viejos que la ventana.
+Cada fuente es fail-safe por separado: si una se cae devuelve [] y no rompe la
+ingesta.
 """
 
 import re
@@ -48,18 +35,8 @@ MAX_PAGINAS = 4          # tope de seguridad: 4 páginas x 10 items = ~40 notas 
 MAX_DESCRIPCION = 400    # recorte para no inflar el prompt
 
 
-# Cada fuente: (etiqueta, url del feed, admite paginación ?paged=N)
-#
-# EconoJournal      - energía, petróleo y gas. Era la única fuente viva.
-# Bichos de Campo   - agro e industria alimenticia. Es el rubro que más inversiones
-# Infocampo           perdió el sitio (Louis Dreyfus, Molinos Agro + ACA, AFA).
-# Infobae Economía  - cobertura general y volumen alto; levanta anuncios corporativos
-#                     grandes (Uber, Mercado Libre, automotrices) que las otras no cubren.
-# El Cronista       - negocios y M&A.
-# Ámbito            - economía general.
-#
-# Los feeds de Infobae, Cronista y Ámbito no son WordPress: no aceptan ?paged=N,
-# pero devuelven muchos más items por página, así que no hace falta.
+# (etiqueta, url, admite ?paged=N). Los de Infobae, Cronista y Ámbito no son
+# WordPress: no paginan, pero traen muchos más items por página.
 FUENTES = [
     ("EconoJournal", "https://econojournal.com.ar/feed/", True),
     ("Bichos de Campo", "https://bichosdecampo.com/feed/", True),
@@ -141,8 +118,8 @@ def scrapear_feed(etiqueta: str, url: str, pagina: bool, dias: int = DIAS_VENTAN
         try:
             items = _leer_pagina(url_pagina)
         except Exception as e:
-            # La primera página que falla es un problema; las siguientes pueden ser
-            # simplemente el final del feed (muchos WordPress devuelven 404 ahí).
+            # Fallar en la primera página es un problema; en las siguientes suele
+            # ser simplemente el final del feed.
             nivel = logger.error if n == 1 else logger.debug
             nivel(f"{etiqueta}: fallo al leer {url_pagina}: {e}")
             break
@@ -162,8 +139,7 @@ def scrapear_feed(etiqueta: str, url: str, pagina: bool, dias: int = DIAS_VENTAN
             if linea:
                 resultados.append(linea)
             elif fecha is not None:
-                # Ya entramos en notas más viejas que la ventana: no tiene sentido
-                # seguir paginando hacia atrás.
+                # Ya pasamos la ventana: no tiene sentido seguir paginando.
                 agotado = True
 
         if agotado:

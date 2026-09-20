@@ -38,14 +38,7 @@ def _tiene_unaccent(conn) -> bool:
 
 
 def _clausula_busqueda(conn):
-    """
-    WHERE de la búsqueda. Cubre empresa, descripción Y ubicación.
-
-    La versión anterior solo miraba empresa y descripción: buscar "Neuquén"
-    devolvía 6 resultados cuando había 19 inversiones en esa provincia, porque
-    la provincia vive en su propia columna. Y sin unaccent, "Neuquen" sin tilde
-    devolvía cero.
-    """
+    """WHERE de la búsqueda: empresa, descripción y ubicación, sin tildes."""
     if _tiene_unaccent(conn):
         campo = "unaccent(empresa || ' ' || descripcion || ' ' || COALESCE(ubicacion, ''))"
         patron = "unaccent(%s)"
@@ -56,10 +49,7 @@ def _clausula_busqueda(conn):
 
 
 def _escapar_patron(q: str) -> str:
-    """
-    Escapa los comodines de ILIKE. Sin esto, buscar "%" devolvía las 143 filas
-    y "_" hacía de comodín de un carácter.
-    """
+    """Escapa los comodines de ILIKE para que "%" no devuelva la tabla entera."""
     limpio = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{limpio}%"
 

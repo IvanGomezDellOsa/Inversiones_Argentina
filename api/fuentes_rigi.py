@@ -6,28 +6,16 @@ https://www.argentina.gob.ar/economia/rigi . Esa página alimenta su mapa desde
 una hoja de Google Sheets pública; consumimos esa misma hoja vía la API de
 Sheets (datos ya estructurados: empresa, monto, provincia, sector, descripción).
 
-Por qué sumarla: es la fuente de MENOR margen de error para estos anuncios
-(datos oficiales, no interpretación periodística).
+Es la fuente de menor margen de error: datos oficiales, no interpretación
+periodística.
 
-Dos problemas que resolvió la auditoría de septiembre de 2026:
+La hoja trae filas repetidas (un proyecto por provincia: 29 filas para 23
+proyectos) y antes se reenviaba entera en cada corrida, consumiendo ~75% del
+prompt para generar puros descartes. Ahora se guarda una huella por proyecto en
+`rigi_vistos` y solo se mandan los nuevos o los que cambiaron.
 
-1. La hoja trae filas REPETIDAS (un proyecto compartido entre provincias aparece
-   una vez por provincia). Eran 29 filas para 23 proyectos reales.
-
-2. Se reenviaba la lista COMPLETA a Gemini en cada corrida. Eso consumía ~75%
-   del prompt y generaba ~23 descartes por duplicado por ciclo — trabajo y plata
-   tirados, y menos espacio para descubrir cosas nuevas. Ahora se lleva registro
-   de qué proyectos ya se procesaron (tabla `rigi_vistos`) y solo se mandan los
-   NUEVOS o los que CAMBIARON de monto/empleos/descripción.
-
-Decisiones de diseño:
-- Fail-safe: ante cualquier fallo (red, formato, rotación de la API key pública)
-  devuelve [] y NO rompe la ingesta.
-- Si no hay conexión a la base, se manda todo (comportamiento anterior): es
-  preferible gastar prompt de más que perder un proyecto nuevo.
-- La hoja NO trae fecha por proyecto: usamos la fecha de ejecución del cron.
-- El monto de la hoja está en MILLONES de USD: se explicita como "USD N millones".
-- La hoja tiene DOS filas de encabezado (claves y etiquetas): se saltan ambas.
+Fail-safe: ante cualquier fallo devuelve [] y no rompe la ingesta. Sin conexión
+a la base manda todo, que es preferible a perder un proyecto nuevo.
 """
 
 import hashlib
@@ -95,11 +83,7 @@ def _descargar_filas():
 
 
 def _proyectos_unicos(filas):
-    """
-    Colapsa las filas repetidas de la hoja en proyectos únicos.
-    Un proyecto compartido entre provincias aparece una vez por provincia; se
-    conserva la primera fila y se acumulan las provincias.
-    """
+    """Colapsa las filas repetidas por provincia en proyectos únicos."""
     unicos = {}
     for fila in filas:
         empresa = _celda(fila, COL_EMPRESA)
@@ -129,10 +113,7 @@ def _proyectos_unicos(filas):
 
 
 def _huella(proyecto) -> str:
-    """
-    Hash del contenido relevante. Si cambia el monto, los empleos o la
-    descripción, el proyecto se vuelve a mandar para que Gemini lo actualice.
-    """
+    """Hash del contenido: si cambia, el proyecto se vuelve a mandar."""
     crudo = "|".join([
         proyecto["empresa"], proyecto["nombre"], proyecto["inversion"],
         proyecto["empleos"], proyecto["descripcion"],
@@ -192,10 +173,8 @@ def _marcar_vistos(conn, proyectos):
 
 def recopilar_rigi(fecha_hoy: str, conn=None) -> list:
     """
-    Devuelve como líneas de texto los proyectos RIGI que son nuevos o cambiaron
-    desde la última corrida. `fecha_hoy` es la fecha de ejecución del cron.
-
-    Con `conn=None` devuelve todos los proyectos (sin filtro incremental).
+    Proyectos RIGI nuevos o modificados desde la última corrida.
+    Con `conn=None` devuelve todos, sin filtro incremental.
     """
     filas = _descargar_filas()
     if filas is None:

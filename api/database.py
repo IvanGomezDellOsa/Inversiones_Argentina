@@ -59,11 +59,8 @@ def insertar_inversion(inversion, embedding, conn):
 
 def init_db(conn):
     """
-    Crea/actualiza el esquema. Es idempotente.
-
-    Se ejecuta desde la ingesta (una vez por corrida), NO desde la API: hacer DDL
-    en el primer request de cada contenedor serverless le sumaba latencia a la
-    primera visita y ponía migraciones en el camino crítico de los lectores.
+    Crea/actualiza el esquema. Idempotente. Corre desde la ingesta, no desde la
+    API: el DDL en el primer request penalizaba la primera visita.
     """
     if not conn:
         return
@@ -74,8 +71,7 @@ def init_db(conn):
             try:
                 cursor.execute("CREATE EXTENSION IF NOT EXISTS unaccent;")
             except Exception as e:
-                # En algunos planes gestionados no se puede crear. La API tiene
-                # fallback a ILIKE común, así que no es bloqueante.
+                # En algunos planes no se puede crear; la API cae a ILIKE común.
                 logger.warning(f"No se pudo habilitar unaccent: {e}")
                 conn.rollback()
 
@@ -101,10 +97,7 @@ def init_db(conn):
             cursor.execute("ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS ubicacion TEXT;")
             cursor.execute("ALTER TABLE inversiones ADD COLUMN IF NOT EXISTS empleos INTEGER;")
 
-            # Registro de proyectos RIGI ya procesados. Evita reenviar las ~23
-            # filas de la hoja oficial a Gemini en cada corrida: antes eso se
-            # comía ~75% del prompt y producía ~23 descartes por duplicado por
-            # ciclo. Solo se mandan los nuevos o los que cambiaron de contenido.
+            # Proyectos RIGI ya procesados, para no reenviar la hoja entera.
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS rigi_vistos (

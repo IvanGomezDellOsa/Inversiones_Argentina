@@ -1,10 +1,8 @@
 /**
  * Configuración del sitio y carga de datos del lado del servidor.
  *
- * La página se renderizaba entera en el cliente: el HTML que recibía Google no
- * contenía ni una inversión. Para un agregador cuyo valor es ser encontrado,
- * eso significaba ser invisible. Acá vive el fetch que corre en el servidor
- * para que la primera pantalla venga con contenido en el HTML.
+ * La página se renderizaba entera en el cliente, así que el HTML que recibía
+ * Google no contenía ni una inversión. Acá vive el fetch del servidor.
  */
 
 import type { Inversion } from "@/components/inversion-card";
@@ -17,13 +15,9 @@ export const SITE_DESCRIPTION =
 export const PRODUCTION_URL = "https://inversionesargentina.com.ar";
 
 /**
- * URL canónica del sitio.
- *
- * A propósito NO usa VERCEL_URL. Esa variable apunta al deployment que se está
- * construyendo, que todavía no sirve tráfico: el fetch del servidor fallaría
- * durante el build y la página quedaría prerenderizada vacía, justo lo que este
- * cambio viene a arreglar. Además, como canonical y como og:url hay que
- * publicar siempre el dominio de producción, nunca una URL de preview.
+ * URL canónica. A propósito no usa VERCEL_URL: apunta al deployment que se está
+ * construyendo y todavía no sirve tráfico, así que el fetch fallaría durante el
+ * build. Además el canonical debe ser siempre el dominio de producción.
  */
 export function getSiteUrl(): string {
   const explicita = process.env.NEXT_PUBLIC_SITE_URL;
@@ -39,16 +33,12 @@ export interface RespuestaInversiones {
   hasMore: boolean;
 }
 
-/**
- * Trae la primera página en el servidor. Si la API no responde devuelve null y
- * el cliente hace el fetch como antes: la página nunca queda rota por esto.
- */
+/** Primera página desde el servidor. Si la API no responde, el cliente reintenta. */
 export async function getInversionesIniciales(): Promise<RespuestaInversiones | null> {
   try {
     const res = await fetch(
       `${getSiteUrl()}/api/inversiones?limit=${PAGE_SIZE}&offset=0`,
-      // Se revalida cada hora: la ingesta corre cada 3 días, así que no hace
-      // falta más frecuencia, y así las visitas pegan contra una página estática.
+      // La ingesta corre cada 3 días: revalidar por hora sobra.
       { next: { revalidate: 3600 } }
     );
     if (!res.ok) return null;

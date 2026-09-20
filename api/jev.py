@@ -1,247 +1,244 @@
 """
-Cliente de Jev (TypeSafe AI) — capa opcional de juicio semántico.
+Capa de juicio semántico con Jev (TypeSafe AI).
 
-Qué es Jev: un "System One model" presentado el 2026-09-15. No genera texto:
-recibe un `state` y un mapa de preguntas tipadas, y devuelve decisiones con
-probabilidades calibradas. Para este proyecto sirve en dos puntos donde hoy
-fallamos, y en los dos la pregunta es un juicio binario, no una redacción:
+Se usa en dos puntos: filtrar registros que no son inversiones productivas y
+decidir si dos registros son el mismo proyecto. Es opcional: sin API key el
+pipeline corre igual con las heurísticas deterministas.
 
-1. FILTRO DE RUIDO. La auditoría encontró 16 registros publicados que no son
-   inversiones privadas nuevas: constituciones de SRL con capital en pesos,
-   emisiones de deuda, compras de acciones, lanzamientos de apps. El prompt de
-   Gemini ya las excluye por texto y aun así se filtran. Un Noul por registro
-   resuelve eso con una probabilidad calibrada.
-
-2. DEDUPLICACIÓN. Los 12 duplicados reales tenían similitud coseno entre 0.758
-   y 0.846, mezclados en la misma banda que proyectos legítimamente distintos.
-   No hay umbral que los separe. Jev responde la pregunta correcta —"¿son el
-   mismo proyecto?"— en vez de aproximarla con distancia vectorial.
-
-Por qué HTTP directo y no el SDK `typesafe-sdk`: misma razón que con Apify. Un
-SDK más es otra dependencia que puede renombrar argumentos entre versiones
-menores y dejar la ingesta muda durante meses. La API REST es estable y ya
-tenemos `requests`.
-
-IMPORTANTE — es OPCIONAL. Jev está en acceso por waitlist. Si no hay
-`TYPESAFE_API_KEY` en el entorno, `disponible()` devuelve False y todo el
-pipeline sigue funcionando con las heurísticas deterministas. El día que llegue
-el acceso, se agrega la variable y se activa sin tocar código.
-
-Límites tenidos en cuenta (doc "Jev 1.13 jaggedness"):
-- No sirve para números ni fechas: nada de "¿el monto es mayor a X?". Los montos
-  y las fechas se siguen procesando en código.
-- Lee de forma literal: las instrucciones dicen la condición exacta, y los casos
-  borde van en `criteria`.
-- El inglés es su idioma principal. Las instrucciones van en inglés; el `state`
-  va en español, que es el contenido real.
+Las preguntas y los umbrales viven todos acá arriba, juntos, para poder
+revisarlos de un vistazo.
 """
 
 import logging
 import os
 
-import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-TYPESAFE_API_KEY = os.getenv("TYPESAFE_API_KEY")
-TYPESAFE_BASE_URL = os.getenv("TYPESAFE_BASE_URL", "https://api.typesafe.ai")
+# El SDK lee TYPESAFE_API_KEY del entorno; aceptamos JEV_API_KEY como alias.
+API_KEY = os.getenv("TYPESAFE_API_KEY") or os.getenv("JEV_API_KEY")
 MODELO = os.getenv("TYPESAFE_MODEL", "jev-latest")
-TIMEOUT = 30
 
-# Umbrales de decisión sobre la probabilidad que devuelve un Noul.
-# Se eligen conservadores a propósito: ante la duda, el registro se publica.
-# Preferimos un registro de más que perder una inversión real.
-UMBRAL_ES_INVERSION = 0.35     # por debajo de esto, se descarta como ruido
-UMBRAL_ES_DUPLICADO = 0.70     # por encima de esto, se considera el mismo proyecto
+try:
+    from typesafe_sdk import Noul, NoulCriteria, TypeSafeClient
+    _SDK_OK = True
+except ImportError:  # el paquete es opcional
+    _SDK_OK = False
+
+
+# --- Umbrales -----------------------------------------------------------------
+# Conservadores a propósito: publicar un registro de más es preferible a
+# descartar una inversión real en silencio.
+
+UMBRAL_INVERSION = 0.40      # por debajo, el registro se descarta como ruido
+UMBRAL_DESCARTE_DURO = 0.75  # probabilidad de ser deuda/M&A/agregado que basta para descartar
+UMBRAL_DUPLICADO = 0.75      # por encima, dos registros son el mismo proyecto.
+                             # Medido: los duplicados reales dan >=0.80 y el par más
+                             # confuso (una obra y la mina que la encarga) da 0.70.
+
+
+# --- Preguntas ----------------------------------------------------------------
+# En inglés porque es el idioma primario de Jev; el contenido evaluado va en
+# español. Se piden varias preguntas atómicas por llamada y se combinan en
+# código, que es más preciso que una sola pregunta amplia.
+
+_PREGUNTAS_INVERSION = {
+    "activo_productivo": Noul(
+        instructions="A private company is committing capital to a productive asset or operation in Argentina.",
+        criteria=NoulCriteria(
+            true={
+                "what": "Building or expanding a plant, factory, mine, pipeline, data center, "
+                        "power park, port or store network; drilling wells; buying productive "
+                        "equipment; or a named project with a stated investment plan.",
+                "examples": ["Builds a new plant in Ezeiza", "Drills 259 wells in Vaca Muerta"],
+            },
+            false={
+                "what": "No productive asset is created or expanded.",
+                "examples": ["Launches a mobile app", "Signs a fuel supply partnership"],
+            },
+        ),
+    ),
+    "operacion_financiera": Noul(
+        instructions="The record describes a financial operation rather than a productive investment.",
+        criteria=NoulCriteria(
+            true={
+                "what": "Issuing bonds or notes, placing debt, taking a loan, a capital increase, "
+                        "an IPO, or buying and selling shares of a company.",
+                "examples": ["Placed US$1.2bn in a nine-year bond", "Acquired 50% of the shares"],
+            },
+            false={"what": "Money is committed to building or operating something."},
+        ),
+    ),
+    "cifra_agregada": Noul(
+        instructions="The figure is a company-wide aggregate rather than one identifiable project.",
+        criteria=NoulCriteria(
+            true={
+                "what": "The total of a whole portfolio, annual capital expenditure guidance, or a "
+                        "multi-year global plan.",
+                "examples": ["Its projects will exceed US$154bn", "Raised its 2026 capex forecast"],
+            },
+            false={"what": "One concrete, identifiable project."},
+        ),
+    ),
+    "inversor_estatal": Noul(
+        instructions="The investor is the State or a wholly state-owned company with no private shareholders.",
+        criteria=NoulCriteria(
+            true={"what": "National, provincial or municipal government, or a fully state-owned entity."},
+            false={
+                "what": "A private company, or a listed or mixed-ownership company making a corporate decision.",
+                "not_for": "A politician announcing a private company's investment: the investor is the company.",
+            },
+        ),
+    ),
+}
+
+_CRITERIOS_MISMO_PROYECTO = NoulCriteria(
+    true={
+        "what": "Both records report the same underlying investment: the same facility, site, works, "
+                "purchase or tender. This includes any kind of commitment, not only plants and mines.",
+        "still_true_when": [
+            "The company name differs: a subsidiary, a joint venture partner, a project vehicle, "
+            "the operator or the parent company.",
+            "The stated amount differs, or one of them states no amount.",
+            "One frames it as an announcement and the other as an approval, an award or progress.",
+            "The wording differs because two outlets reported the same event.",
+        ],
+        "examples": [
+            "McEwen Cooper and Andes Corporación Minera both mean the Los Azules project",
+            "Vicuña Argentina and Lundin Mining both tendering 200 buses for the same mine",
+        ],
+    },
+    false={
+        "what": "Two genuinely separate investments, even for the same company, industry or city.",
+        "examples": ["Two separate plants in Bahía Blanca", "A plant and a pipeline"],
+    },
+)
 
 
 def disponible() -> bool:
-    """True si hay credencial configurada. Todo el módulo es opt-in."""
-    return bool(TYPESAFE_API_KEY)
+    """True si hay SDK y credencial. Todo el módulo es opt-in."""
+    return _SDK_OK and bool(API_KEY)
 
 
-def _preguntar(state, questions: dict):
-    """
-    Una llamada a la API. Devuelve el mapa `answers` o None si algo falló.
-    Jev evalúa todas las preguntas en paralelo contra el mismo state, así que
-    conviene mandarlas juntas en vez de una por llamada.
-    """
+def _preguntar(state, questions):
+    """Una llamada a la API. Devuelve la respuesta o None si falló."""
     if not disponible():
         return None
     try:
-        resp = requests.post(
-            f"{TYPESAFE_BASE_URL}/v1/systemone",
-            headers={
-                "Authorization": f"Bearer {TYPESAFE_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={"state": state, "model": MODELO, "questions": questions},
-            timeout=TIMEOUT,
-        )
-        resp.raise_for_status()
-        return resp.json().get("answers") or {}
+        with TypeSafeClient(api_key=API_KEY, model=MODELO) as client:
+            return client.system_one(state=state, questions=questions)
     except Exception as e:
-        # Nunca rompemos la ingesta por Jev: se degrada a las heurísticas.
+        # Jev nunca rompe la ingesta: se degrada a las heurísticas.
         logger.warning(f"Jev: fallo en la consulta ({e}). Se sigue sin Jev.")
         return None
 
 
-def _noul(answers: dict, clave: str):
-    """Extrae la probabilidad de un Noul. None si no vino."""
-    if not answers:
-        return None
-    a = answers.get(clave) or {}
-    valor = a.get("noul")
-    return float(valor) if isinstance(valor, (int, float)) else None
-
-
-# --- 1) Filtro de ruido --------------------------------------------------------
-
-_CRITERIOS_INVERSION = {
-    "true": (
-        "A specific, identifiable private company is committing capital to a productive "
-        "asset or operation in Argentina: building or expanding a plant, factory, mine, "
-        "pipeline, data center, power park, port or store network; drilling wells; "
-        "buying productive equipment; or launching a named project with a stated "
-        "investment plan."
-    ),
-    "false": (
-        "Any of the following: the incorporation or registration of a new company and "
-        "its share capital; issuing bonds, notes or debt; taking out a loan; buying or "
-        "selling shares of an existing company on the market or in an M&A deal; winning "
-        "a supply or construction contract awarded by someone else; launching an app, a "
-        "product, a service or a commercial partnership; a government or state-owned "
-        "entity investing its own money; an aggregate forecast of a company's whole "
-        "portfolio or annual capital expenditure guidance rather than one concrete "
-        "project; macroeconomic statistics."
-    ),
-}
-
-
 def es_inversion_real(inversion: dict):
     """
-    ¿El registro es una inversión privada concreta y nueva?
-    Devuelve (veredicto, probabilidad). `veredicto` es None si Jev no está
-    disponible o falló, para que el llamador decida con sus propias reglas.
+    ¿El registro es una inversión privada productiva?
+    Devuelve (veredicto, detalle). veredicto None = Jev no respondió.
     """
-    if not disponible():
-        return None, None
-
-    state = {
-        "empresa": inversion.get("empresa"),
-        "descripcion": inversion.get("descripcion"),
-        "estado": inversion.get("estado"),
-        "ubicacion": inversion.get("ubicacion"),
-    }
-    answers = _preguntar(
-        state,
+    respuesta = _preguntar(
         {
-            "es_inversion": {
-                "type": "noul",
-                "instructions": (
-                    "This record comes from an aggregator of private investments in "
-                    "Argentina. Does it describe a concrete private investment in a "
-                    "productive asset or operation located in Argentina?"
-                ),
-                "criteria": _CRITERIOS_INVERSION,
-            }
+            "empresa": inversion.get("empresa"),
+            "descripcion": inversion.get("descripcion"),
+            "ubicacion": inversion.get("ubicacion"),
         },
+        _PREGUNTAS_INVERSION,
     )
-    p = _noul(answers, "es_inversion")
-    if p is None:
+    if respuesta is None:
         return None, None
-    return p >= UMBRAL_ES_INVERSION, p
+
+    p = {k: respuesta.nouls[k].noul for k in _PREGUNTAS_INVERSION}
+
+    # Un descarte fuerte en cualquiera de los tres vetos alcanza; si no, decide
+    # la probabilidad de que haya un activo productivo.
+    vetado = (
+        p["operacion_financiera"] >= UMBRAL_DESCARTE_DURO
+        or p["cifra_agregada"] >= UMBRAL_DESCARTE_DURO
+        or p["inversor_estatal"] >= UMBRAL_DESCARTE_DURO
+    )
+    veredicto = (not vetado) and p["activo_productivo"] >= UMBRAL_INVERSION
+    return veredicto, p
 
 
-# --- 2) Deduplicación ----------------------------------------------------------
-
-def es_mismo_proyecto(candidato: dict, existente: dict):
+def cual_es_el_mismo_proyecto(candidato: dict, vecinos: list):
     """
-    ¿El candidato y el registro existente describen el MISMO proyecto de inversión?
-
-    El caso difícil no es el texto parecido sino el mismo proyecto contado por
-    fuentes distintas y con nombres de empresa distintos: "McEwen Cooper" y
-    "Andes Corporación Minera" son ambos el proyecto Los Azules; "Pampa Energía"
-    y "Fertil Pampa" son ambos la planta de urea de Bahía Blanca.
-
-    Devuelve (veredicto, probabilidad); (None, None) si Jev no está disponible.
+    Compara el candidato contra varios vecinos en UNA sola llamada.
+    Devuelve (vecino, probabilidad) del primero que supere el umbral, o (None, None).
     """
-    if not disponible():
+    if not vecinos:
         return None, None
 
     state = {
-        "registro_a": {
+        "candidato": {
             "empresa": candidato.get("empresa"),
             "descripcion": candidato.get("descripcion"),
             "ubicacion": candidato.get("ubicacion"),
         },
-        "registro_b": {
-            "empresa": existente.get("empresa"),
-            "descripcion": existente.get("descripcion"),
-            "ubicacion": existente.get("ubicacion"),
-        },
-    }
-    answers = _preguntar(
-        state,
-        {
-            "mismo_proyecto": {
-                "type": "noul",
-                "instructions": (
-                    "Do `registro_a` and `registro_b` describe the same single "
-                    "investment project?"
-                ),
-                "criteria": {
-                    "true": (
-                        "Both records refer to the same physical project or the same "
-                        "corporate commitment: the same plant, mine, pipeline, field, "
-                        "park or facility, at the same site. Treat them as the same "
-                        "project even when the company name differs (a subsidiary, a "
-                        "joint venture partner, a project vehicle or the parent "
-                        "company), when the stated amount differs, or when one frames "
-                        "it as an announcement and the other as a regulatory approval."
-                    ),
-                    "false": (
-                        "They are different projects, even if they belong to the same "
-                        "company, the same industry or the same city. Two separate "
-                        "plants, two separate fields, or a plant and a pipeline are "
-                        "different projects."
-                    ),
-                },
+        "existentes": [
+            {
+                "id": str(v.get("id")),
+                "empresa": v.get("empresa"),
+                "descripcion": v.get("descripcion"),
+                "ubicacion": v.get("ubicacion"),
             }
-        },
-    )
-    p = _noul(answers, "mismo_proyecto")
-    if p is None:
+            for v in vecinos
+        ],
+    }
+    # Las preguntas corren en paralelo contra el mismo state, así que preguntar
+    # por los k vecinos de una no cuesta más tiempo que preguntar por uno.
+    questions = {
+        f"v{i}": Noul(
+            instructions={
+                "question": f"Do `candidato` and `existentes[{i}]` describe the same investment project?",
+                "compare": ["`candidato`", f"`existentes[{i}]`"],
+            },
+            criteria=_CRITERIOS_MISMO_PROYECTO,
+        )
+        for i in range(len(vecinos))
+    }
+
+    respuesta = _preguntar(state, questions)
+    if respuesta is None:
         return None, None
-    return p >= UMBRAL_ES_DUPLICADO, p
+
+    mejor, mejor_p = None, 0.0
+    for i, vecino in enumerate(vecinos):
+        p = respuesta.nouls[f"v{i}"].noul
+        if p > mejor_p:
+            mejor, mejor_p = vecino, p
+    if mejor_p >= UMBRAL_DUPLICADO:
+        return mejor, mejor_p
+    return None, mejor_p
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     if not disponible():
-        print("TYPESAFE_API_KEY no configurada: Jev está desactivado (el pipeline funciona igual).")
+        print("Jev desactivado: falta TYPESAFE_API_KEY (o JEV_API_KEY) o el paquete typesafe-sdk.")
         raise SystemExit(0)
 
     print("=== Filtro de ruido ===")
-    for caso in [
-        {"empresa": "Sinteplast", "descripcion": "Construye una nueva planta en Ezeiza para duplicar su producción de productos cementicios.", "estado": "confirmada"},
-        {"empresa": "YPF", "descripcion": "YPF colocó US$ 1.200 millones en el mercado internacional a través de un nuevo bono a nueve años.", "estado": "confirmada"},
-        {"empresa": "Carnescatano", "descripcion": "Nueva SRL con un capital de $1.000.000, enfocada en el negocio de la carne.", "estado": "confirmada"},
-        {"empresa": "Puma Energy", "descripcion": "Puma Energy lanzó Puma Flota, una nueva aplicación para empresas de transporte.", "estado": "anunciada"},
-    ]:
-        v, p = es_inversion_real(caso)
-        print(f"  {str(v):<5} p={p}  {caso['empresa']}: {caso['descripcion'][:70]}")
-
-    print("\n=== Deduplicación ===")
-    pares = [
-        ({"empresa": "McEwen Cooper", "descripcion": "Inversión para explotación de cobre en el proyecto Los Azules, aprobado en el RIGI.", "ubicacion": "San Juan"},
-         {"empresa": "Andes Corporación Minera", "descripcion": "Proyecto Los Azules en San Juan para la exploración y explotación de cobre.", "ubicacion": "San Juan"}, True),
-        ({"empresa": "Pampa Energía", "descripcion": "Busca ingresar al RIGI para construir una planta de urea en Bahía Blanca.", "ubicacion": "Buenos Aires"},
-         {"empresa": "Profertil", "descripcion": "Presentará el proyecto de ampliación de su planta de fertilizantes en Bahía Blanca en el RIGI.", "ubicacion": "Buenos Aires"}, False),
+    casos = [
+        ("Sinteplast", "Construye una nueva planta en Ezeiza para duplicar su producción de productos cementicios.", True),
+        ("YPF", "YPF colocó US$ 1.200 millones en el mercado internacional a través de un nuevo bono a nueve años.", False),
+        ("Carnescatano", "Nueva SRL con un capital de $1.000.000, enfocada en el negocio de la carne.", False),
+        ("Puma Energy", "Puma Energy lanzó Puma Flota, una nueva aplicación para empresas de transporte.", False),
+        ("Vista", "Peter Thiel adquirió acciones de Vista por US$ 76 millones.", False),
+        ("YPF", "YPF anticipa que sus proyectos bajo el RIGI superarán los US$154.000 millones.", False),
+        ("Huawei", "La provincia de Buenos Aires le adjudicó la provisión de baterías de almacenamiento.", False),
+        ("Toyota", "Abrirá su tercera planta en Zárate para fabricar una Hilux híbrida.", True),
     ]
-    for a, b, esperado in pares:
-        v, p = es_mismo_proyecto(a, b)
-        print(f"  esperado={esperado!s:<5} obtuvo={v!s:<5} p={p}  {a['empresa']} vs {b['empresa']}")
+    ok = 0
+    for empresa, desc, esperado in casos:
+        v, p = es_inversion_real({"empresa": empresa, "descripcion": desc})
+        ok += v == esperado
+        print(f"  {'OK ' if v == esperado else 'MAL'} esperado={esperado!s:<5} obtuvo={v!s:<5} {empresa}")
+        if p:
+            print(f"        productivo={p['activo_productivo']:.2f} financiera={p['operacion_financiera']:.2f} "
+                  f"agregado={p['cifra_agregada']:.2f} estatal={p['inversor_estatal']:.2f}")
+    print(f"\n  {ok}/{len(casos)} correctos")

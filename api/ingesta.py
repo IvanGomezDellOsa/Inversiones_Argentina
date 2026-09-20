@@ -1,15 +1,12 @@
 """
 Flujo de ingesta. Corre por cron cada 3 días desde GitHub Actions.
 
-Orden: recolectar de todas las fuentes -> extraer con Gemini -> validar ->
-filtrar ruido -> deduplicar -> insertar -> publicar en Telegram.
+Recolecta de todas las fuentes -> extrae con Gemini -> valida -> filtra ruido ->
+deduplica -> inserta -> publica en Telegram.
 
-Una lección de la auditoría de septiembre de 2026 atraviesa todo el archivo: el
-scraper de X estuvo roto desde mayo y NADIE SE ENTERÓ, porque el workflow
-terminaba en verde igual. Por eso ahora la ingesta lleva un parte de estado de
-cada fuente, lo imprime al final y termina con código de salida distinto de cero
-si una fuente que debería andar no trajo nada. Un cron que falla en verde es
-peor que uno que falla en rojo.
+Termina imprimiendo el estado de cada fuente y sale distinto de cero si alguna
+que debería andar no trajo nada: el scraper de X estuvo roto meses con el
+workflow en verde.
 """
 
 import logging
@@ -43,10 +40,8 @@ _EMPRESAS_GENERICAS = {
     "estado", "estado nacional", "gobierno", "gobierno nacional",
 }
 
-# Patrones de lo que NO es una inversión productiva nueva. Es una red determinista
-# que complementa al prompt de Gemini y al filtro de Jev: la auditoría encontró 16
-# registros publicados de este tipo (emisiones de deuda, constituciones de SRL,
-# compras de acciones, lanzamientos de apps), así que las tres capas suman.
+# Lo que NO es una inversión productiva nueva. Red determinista que complementa
+# al prompt de Gemini y al filtro de Jev.
 _PATRONES_NO_INVERSION = (
     # operaciones financieras
     "obligaciones negociables", "emision de deuda", "coloco us", "colocacion de deuda",
@@ -71,10 +66,7 @@ def _normalizar(texto: str) -> str:
 
 
 def _empresa_invalida(empresa) -> bool:
-    """
-    True si el nombre de empresa no sirve para publicar: vacío, genérico, o
-    anómalamente largo (una lista de empresas o una descripción, no una marca).
-    """
+    """Vacío, genérico, o tan largo que es una lista o descripción, no una marca."""
     if not empresa or not str(empresa).strip():
         return True
     texto = str(empresa)
@@ -111,17 +103,15 @@ def validar_registro(registro):
             logger.warning(f"monto_usd no normalizable, seteando None: {monto!r}")
             registro["monto_usd"] = None  # se conserva el registro, se anula solo el monto
 
-    # Un monto ridículamente bajo casi siempre es una cifra en pesos leída como
-    # dólares. La auditoría encontró una SRL con "capital de $1.000.000" publicada
-    # y un gimnasio de USD 140.000. Se anula el monto, no el registro.
+    # Un monto muy bajo casi siempre es una cifra en pesos leída como dólares.
+    # Se anula el monto, no el registro.
     monto = registro.get("monto_usd")
     if monto is not None and monto < 500_000:
         logger.warning(f"monto_usd sospechosamente bajo ({monto}), probablemente pesos. Se anula.")
         registro["monto_usd"] = None
 
-    # Fecha: si no viene una fecha válida del anuncio, usamos la fecha de ejecución
-    # del cron. Las fechas solo dan un orden cronológico aproximado (el cron corre
-    # seguido), no son un dato informativo, así que evitamos fechas nulas en la base.
+    # Sin fecha válida usamos la de ejecución: solo dan un orden cronológico
+    # aproximado, así que es preferible a un nulo.
     fecha_str = registro.get("fecha_anuncio")
     fecha_valida = False
     if fecha_str:
@@ -152,10 +142,7 @@ def validar_registro(registro):
 
 
 def _filtrar_con_jev(inversiones):
-    """
-    Segunda pasada de filtrado con Jev, si está configurado.
-    Sin Jev devuelve la lista tal cual: el pipeline funciona igual.
-    """
+    """Segunda pasada con Jev. Sin Jev devuelve la lista tal cual."""
     if not jev.disponible():
         logger.info("Jev no está configurado; se usa solo el filtrado determinista.")
         return inversiones
@@ -165,7 +152,8 @@ def _filtrar_con_jev(inversiones):
     for inv in inversiones:
         veredicto, p = jev.es_inversion_real(inv)
         if veredicto is False:
-            logger.info(f"    Jev descartó '{inv.get('empresa')}' (p={p:.2f}): no es una inversión productiva.")
+            detalle = " ".join(f"{k}={v:.2f}" for k, v in p.items()) if p else ""
+            logger.info(f"    Jev descartó '{inv.get('empresa')}': {detalle}")
             continue
         if veredicto is None:
             logger.debug(f"    Jev no respondió por '{inv.get('empresa')}'; se conserva.")
@@ -204,8 +192,7 @@ def _recolectar(conn):
         "detalle": "solo proyectos nuevos o modificados",
     }
 
-    # Deduplicamos el batch antes de procesar, para no mandar la misma línea
-    # repetida cuando varias fuentes coinciden.
+    # Deduplicamos el batch: varias fuentes suelen traer la misma línea.
     publicaciones = list(dict.fromkeys(
         resultado_x.lineas + publicaciones_web + publicaciones_rigi
     ))
@@ -236,8 +223,7 @@ def run_ingesta():
 
     metricas = {}
     try:
-        # El esquema se asegura acá, una vez por corrida, y no en el camino de
-        # los lectores de la API.
+        # Una vez por corrida, fuera del camino de los lectores de la API.
         init_db(conn)
 
         publicaciones, estado = _recolectar(conn)
@@ -299,8 +285,7 @@ def run_ingesta():
 
         _imprimir_parte(estado, metricas)
 
-        # Salir en rojo si una fuente que debería andar no trajo nada. Es la
-        # única forma de enterarse de que algo se rompió sin revisar los logs.
+        # En rojo si una fuente cayó: es la única forma de enterarse sin leer logs.
         fuentes_caidas = [f for f, d in estado.items() if not d["ok"]]
         if fuentes_caidas:
             logger.error(f"FUENTES CAÍDAS: {', '.join(fuentes_caidas)}. Revisar antes del próximo ciclo.")

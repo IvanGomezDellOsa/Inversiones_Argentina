@@ -16,3 +16,7 @@ google-genai~=1.70
 mangum~=0.19
 python-dotenv~=1.0
 requests~=2.32
+
+# Jev (TypeSafe AI). Opcional: sin TYPESAFE_API_KEY el pipeline corre igual.
+# Pin exacto porque el paquete tiene días y su API todavía se mueve.
+typesafe-sdk==0.7.0
