@@ -113,7 +113,8 @@ La corrida termina imprimiendo el estado de cada fuente y sale con código disti
 - Indicadores de estado con colores diferenciados: confirmada (verde), anunciada (azul), en evaluación (amarillo)
 - Formato inteligente de montos: `USD 40M`, `USD 1.2B`, o monto exacto para cifras menores
 - Badges de provincia y empleos cuando están disponibles
-- La primera página se renderiza en el servidor, así que el contenido es indexable
+- La primera página se renderiza en el servidor con ISR, así que el contenido es indexable
+- Datos estructurados JSON-LD (un `ItemList` de proyectos de inversión), `sitemap.xml` y `robots.txt`. Antes el crawler recibía una página vacía y `/sitemap.xml` devolvía 404
 
 **Búsqueda en tiempo real**
 - Input con debounce (300ms) que consulta la API con parámetro `?q=`

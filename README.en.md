@@ -113,7 +113,8 @@ Each run ends by printing the status of every source and exits non-zero if one t
 - Colour-coded status indicators: confirmed (green), announced (blue), under evaluation (yellow)
 - Smart amount formatting: `USD 40M`, `USD 1.2B`, or the exact figure for smaller amounts
 - Province and jobs badges when available
-- The first page is server-rendered, so the content is indexable
+- The first page is server-rendered with ISR, so the content is indexable
+- JSON-LD structured data (an `ItemList` of investment projects), `sitemap.xml` and `robots.txt`. Before, the crawler got an empty page and `/sitemap.xml` returned a 404
 
 **Real-time search**
 - Debounced input (300ms) querying the API with a `?q=` parameter
