@@ -101,7 +101,9 @@ _CRITERIOS_MISMO_PROYECTO = NoulCriteria(
                 "purchase or tender. This includes any kind of commitment, not only plants and mines.",
         "still_true_when": [
             "The company name differs: a subsidiary, a joint venture partner, a project vehicle, "
-            "the operator or the parent company.",
+            "the operator or the parent company. The field "
+            "`mismo_grupo_societario_que_el_candidato`, when present and true, means the code has "
+            "already confirmed both names belong to the same corporate group.",
             "The stated amount differs, or one of them states no amount.",
             "One frames it as an announcement and the other as an approval, an award or progress.",
             "The wording differs because two outlets reported the same event.",
@@ -165,13 +167,31 @@ def es_inversion_real(inversion: dict):
     return veredicto, p
 
 
-def cual_es_el_mismo_proyecto(candidato: dict, vecinos: list):
+def cual_es_el_mismo_proyecto(candidato: dict, vecinos: list, mismo_grupo=None):
     """
     Compara el candidato contra varios vecinos en UNA sola llamada.
     Devuelve (vecino, probabilidad) del primero que supere el umbral, o (None, None).
+
+    `mismo_grupo` es una función (a, b) -> bool con la que el código le informa a
+    Jev si dos nombres son del mismo grupo societario. Es un dato que no está en
+    el texto —"Fertil Pampa" es la subsidiaria de Pampa Energía— y que Jev no
+    puede inferir.
     """
     if not vecinos:
         return None, None
+
+    def existente(v):
+        d = {
+            "id": str(v.get("id")),
+            "empresa": v.get("empresa"),
+            "descripcion": v.get("descripcion"),
+            "ubicacion": v.get("ubicacion"),
+        }
+        if mismo_grupo is not None:
+            d["mismo_grupo_societario_que_el_candidato"] = bool(
+                mismo_grupo(candidato.get("empresa"), v.get("empresa"))
+            )
+        return d
 
     state = {
         "candidato": {
@@ -179,15 +199,7 @@ def cual_es_el_mismo_proyecto(candidato: dict, vecinos: list):
             "descripcion": candidato.get("descripcion"),
             "ubicacion": candidato.get("ubicacion"),
         },
-        "existentes": [
-            {
-                "id": str(v.get("id")),
-                "empresa": v.get("empresa"),
-                "descripcion": v.get("descripcion"),
-                "ubicacion": v.get("ubicacion"),
-            }
-            for v in vecinos
-        ],
+        "existentes": [existente(v) for v in vecinos],
     }
     # Las preguntas corren en paralelo contra el mismo state, así que preguntar
     # por los k vecinos de una no cuesta más tiempo que preguntar por uno.

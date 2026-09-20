@@ -61,13 +61,37 @@ def clave_identidad(empresa) -> str:
     return re.sub(r"\s+", " ", base).strip()
 
 
+# Vehículos societarios y socios de JV que ejecutan un proyecto a nombre de otra
+# empresa. No se deducen del texto: "Fertil Pampa" es la subsidiaria 100% de
+# Pampa Energía para la planta de urea, y ninguna descripción lo dice. Va en
+# código porque es conocimiento estable del dominio, no un juicio.
+_ALIAS_EMPRESAS = {
+    "fertil pampa": "pampa energia",
+    "vicuna": "vicuna",
+    "bhp y lundin mining": "vicuna",
+    "lundin mining": "vicuna",
+    "bhp": "vicuna",
+    "mcewen cooper": "andes corporacion minera",
+    "mcewen mining": "andes corporacion minera",
+    "minas argentinas": "minas argentinas",
+    "tgs": "transportadora de gas del sur",
+    "tgs sd1": "transportadora de gas del sur",
+}
+
+
+def _canonica(empresa) -> str:
+    """Clave de identidad, resolviendo alias societarios conocidos."""
+    clave = clave_identidad(empresa)
+    return _ALIAS_EMPRESAS.get(clave, clave)
+
+
 def misma_empresa(a, b) -> bool:
     """
     True si dos nombres designan a la misma empresa. Compara por contención de
-    tokens: "Sidersa" y "Sidersa Acería s.d.e." sí; "Pampa Energía" y "Fertil
-    Pampa" no.
+    tokens y resuelve alias: "Sidersa" y "Sidersa Acería s.d.e." sí, igual que
+    "Fertil Pampa" y "Pampa Energía"; "Profertil" y "Pampa Energía" no.
     """
-    ka, kb = clave_identidad(a), clave_identidad(b)
+    ka, kb = _canonica(a), _canonica(b)
     if not ka or not kb:
         return False
     if ka == kb:
@@ -218,7 +242,7 @@ def es_duplicado(inversion: dict, embedding, conn):
 
     # 2. Jev, una sola llamada para todos los vecinos.
     if jev.disponible():
-        match, p = jev.cual_es_el_mismo_proyecto(inversion, vecinos)
+        match, p = jev.cual_es_el_mismo_proyecto(inversion, vecinos, mismo_grupo=misma_empresa)
         if match is not None:
             return True, f"Jev: mismo proyecto que {etiquetar(match)} (p={p:.2f})"
         if p is not None:

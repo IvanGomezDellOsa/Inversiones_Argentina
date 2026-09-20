@@ -70,7 +70,7 @@ Schema del Array JSON de salida:
 [
   {{
     "empresa": "nombre comercial corto de UNA empresa real e identificable, sin SA ni SRL. Si no hay una empresa concreta (solo un sector, un genérico como 'empresas privadas', una categoría/descripción en lugar de la marca, o el nombre de una persona física sin empresa), omití el registro entero.",
-    "descripcion": "máximo 4 oraciones. Solo hechos concretos derivados de la noticia. Incluí SIEMPRE, si aparecen, el nombre propio del proyecto y la localidad exacta (ej: 'Los Azules', 'Gualcamayo', 'Rincón de Aranda', 'Timbúes'): son lo que permite reconocer después que dos noticias hablan del mismo proyecto. Sin menciones a fuentes, sin opinión, sin emojis ni hipervínculos.",
+    "descripcion": "máximo 4 oraciones. Solo hechos concretos derivados de la noticia. Sin menciones a fuentes, sin opinión, sin emojis ni hipervínculos. Incluí SIEMPRE, cuando aparezcan: (a) el nombre propio del proyecto y la localidad exacta —'Los Azules', 'Gualcamayo', 'Rincón de Aranda', 'Timbúes', 'Bahía Blanca'—; (b) la empresa madre si quien ejecuta es una subsidiaria o un vehículo societario ('Fértil Pampa, subsidiaria de Pampa Energía'); (c) la capacidad total anual además de la diaria, si la noticia da una de las dos. Estos tres datos son los que permiten reconocer después que dos noticias hablan del mismo proyecto.",
     "monto_usd": número entero puro EN DÓLARES sin puntos ni comas (ej: 40 millones -> 40000000). Si la cifra está en pesos argentinos, poné null: no la conviertas. Si no se informa, poner null,
     "fecha_anuncio": "fecha real del anuncio en formato YYYY-MM-DD; si no surge de la noticia, poné null",
     "estado": "confirmada" o "anunciada" o "en_evaluacion",
