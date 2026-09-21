@@ -5,7 +5,7 @@
 🌐 **Production deploy:** [inversionesargentina.com.ar](https://inversionesargentina.com.ar)
 📢 **Telegram channel:** [t.me/inversiones_en_argentina](https://t.me/inversiones_en_argentina)
 
-Automated web aggregator that collects, structures and lists private investments made or announced in Argentina. It combines the official RIGI registry, scraping of specialised X accounts, RSS feeds from outlets across different sectors, and semantic search on Google via generative AI, exposing the data through a REST API to a frontend that renders an interactive timeline. Every 72 hours, newly detected investments are published automatically to both the website and the Telegram channel.
+Automated web aggregator that collects, structures and lists private investments made or announced in Argentina. It combines the official RIGI registry, specialised X accounts, RSS feeds from outlets across different sectors, and Google search via generative AI, exposing the data through a REST API to a frontend that renders an interactive timeline. Every 72 hours, newly detected investments are published automatically to both the website and the Telegram channel.
 
 ---
 
@@ -15,9 +15,9 @@ Automated web aggregator that collects, structures and lists private investments
 GitHub Actions (cron every 72h)
 ↓
 ┌─────────────────┬──────────────────────┬─────────────────────┐
-│ Apify REST API  │ RSS from 6 outlets   │ Official RIGI sheet │
-│ X: @zubel_ok    │ energy, agriculture, │ (Ministry of        │
-│    @LuisCaputoAR│ business, general    │  Economy) incremental│
+│ X accounts      │ RSS outlets          │ Official RIGI       │
+│ (Apify REST)    │ energy, agriculture, │ registry —          │
+│                 │ business, general    │ incremental         │
 └─────────────────┴──────────────────────┴─────────────────────┘
 ↓
 Relevance filter (deterministic, zero cost)
@@ -26,7 +26,7 @@ Gemini 2.5 Flash + Google Search Grounding  →  JSON extraction
 ↓
 Validation, normalisation and non-productive-operation filter
 ↓
-Jev (TypeSafe AI) — optional: semantic noise filter
+Jev (TypeSafe AI) — optional: typed judgements with calibrated probability
 ↓
 Deduplication: pgvector retrieves candidates + identity/Jev decide
 ↓
@@ -47,10 +47,10 @@ Server-rendered Next.js (inversionesargentina.com.ar)
 
 | Layer | Technology |
 |-------|------------|
-| **Automation** | GitHub Actions (cron every 72h, 01:00 AM ARG) |
-| **X scraping** | Apify REST API v2 (`danek/twitter-scraper`, configurable) |
-| **Web sources** | RSS from EconoJournal, Bichos de Campo, Infocampo, Infobae Economía, El Cronista and Ámbito |
-| **Official source** | Public Google Sheet from the RIGI portal (argentina.gob.ar) |
+| **Automation** | GitHub Actions (cron every 72h) |
+| **X scraping** | Apify REST API v2 (actor configurable via environment) |
+| **Web sources** | RSS feeds from economics, energy and agribusiness outlets |
+| **Official source** | Public RIGI portal (argentina.gob.ar) |
 | **Generative AI** | Google Gemini 2.5 Flash with Google Search Grounding |
 | **Semantic judgement** | Jev (TypeSafe AI) — optional, enabled by environment variable |
 | **Embeddings** | `gemini-embedding-2-preview` (768 dimensions) |
@@ -73,36 +73,33 @@ Server-rendered Next.js (inversionesargentina.com.ar)
 
 ---
 
-## ⚙️ The 72-hour ingestion pipeline
+## ⚙️ Ingestion pipeline, every 72h
 
 **1. Multi-source collection**
 
-- **X via Apify.** Pulls `@zubel_ok` (an investment-announcement curator) and `@LuisCaputoAR` (Ministry of Economy) using X's advanced search syntax, excluding replies and filtering to a 7-day window. It calls the **REST API directly rather than the SDK**: the SDK renamed an argument in a minor release and left the scraper broken for months without anything failing.
-- **RSS from six outlets** across different sectors, paginated until the 7-day window is actually covered. A WordPress feed returns only 10 items — about 3 days — so without pagination the declared window was unreachable.
+- **Specialised X accounts**, through Apify's REST API, using advanced search syntax over a bounded time window.
+- **RSS outlets** across different sectors, paginated until the full window is covered.
 - **Official RIGI registry**, **incrementally**: a fingerprint of each project is stored and only new ones, or ones whose amount, jobs or description changed, are re-sent.
 
 **2. Relevance filter**
-Before spending a single Gemini token, a deterministic filter drops the structural noise in the feeds (daily price quotes, weather, sports). It favours recall: when in doubt it lets content through, because over-filtering means losing a real investment.
+Before spending a Gemini token, a deterministic filter discards the structural noise in the feeds. It favours recall: when in doubt it lets an item through, because over-filtering means losing a real investment.
 
-**3. Processing with Gemini + Grounding**
-The prompt sends the collected material as SOURCE 1 and instructs Gemini to search Google for additional news from the period as SOURCE 2, explicitly targeting the sectors the owned sources cover poorly. It returns a JSON array with `empresa`, `descripcion`, `monto_usd`, `fecha_anuncio`, `estado`, `ubicacion` and `empleos`.
+**3. Extraction with Gemini + Grounding**
+The collected material goes in as the first source and Gemini searches Google for additional news from the period as the second, explicitly focused on the sectors the owned sources cover least. It returns a JSON array with `empresa`, `descripcion`, `monto_usd`, `fecha_anuncio`, `estado`, `ubicacion` and `empleos`.
 
-**4. Validation and non-investment filtering**
-Beyond validating types, states and dates, a deterministic net rejects what is not a new productive investment: bond and note issuances, loans, company incorporations lifted from the Official Gazette (with capital denominated in pesos), share purchases and M&A, contracts won by suppliers, product or app launches, and aggregate portfolio figures. Suspiciously small amounts are nulled out: they are almost always pesos read as dollars.
+**4. Validation and filtering of what is not an investment**
+Types, statuses and dates are validated and amounts normalised. A deterministic net discards whatever is not a new productive investment: bond and note issuance, loans, company incorporations, share purchases and M&A, contracts won by suppliers, product or service launches, and portfolio-wide figures.
 
 **5. Semantic judgement with Jev (optional)**
-When `TYPESAFE_API_KEY` is set, each record goes through a [Jev](https://typesafe.ai) Noul that returns a calibrated probability of it being a concrete private investment. Without the variable the pipeline runs exactly the same on its deterministic layers.
+When `TYPESAFE_API_KEY` is set, each record goes through [Jev](https://typesafe.ai), a model that returns typed decisions with calibrated probability instead of text, answering whether the record is a concrete private investment. Without the variable the pipeline runs exactly the same on its deterministic layers.
 
 **6. Deduplication**
-The embedding is used to **retrieve** the k nearest neighbours, not to decide. The decision is made, in order, by: near-identical text, Jev answering "are these the same project?", and three deterministic heuristics (same normalised company with very high similarity, same company with an identical amount, or a shared distinctive proper noun).
+The embedding is used to **retrieve** the closest candidates, not to decide. The decision is made by identity rules and by Jev answering whether two records describe the same project.
 
-> **Why a similarity threshold isn't enough.** Measuring the real duplicates found in production, their cosine similarity ranged from 0.758 to 0.846 — and legitimately distinct projects live in that same band: Pampa's urea plant and Profertil's, Pluspetrol and Vista, Coral Energía and Edesur. A single embedding over such a thematically narrow corpus (Vaca Muerta, lithium, copper, RIGI) compresses the vector space until two different projects in the same sector look as alike as the same project reported twice. No threshold separates them; the actual question has to be asked.
+> **Why similarity retrieves but does not decide.** Over a thematically narrow corpus the vector space compresses: two distinct projects in the same sector and region can look as alike as the same project reported twice by two outlets. No threshold separates those two cases, so similarity picks what to look at and project identity is resolved separately.
 
-**7. Insertion and publishing**
-Unique records are persisted with their embedding and published to the Telegram channel at the same time.
-
-**8. Status report**
-Each run ends by printing the status of every source and exits non-zero if one that should be working returned nothing. A cron job that fails green is worse than one that fails red.
+**7. Insertion, publishing and status report**
+Unique records are persisted with their embedding and published to the Telegram channel at the same time. Each run ends by printing the status of every source and exits non-zero if one that should be responding returned nothing.
 
 ---
 
@@ -114,7 +111,7 @@ Each run ends by printing the status of every source and exits non-zero if one t
 - Smart amount formatting: `USD 40M`, `USD 1.2B`, or the exact figure for smaller amounts
 - Province and jobs badges when available
 - The first page is server-rendered with ISR, so the content is indexable
-- JSON-LD structured data (an `ItemList` of investment projects), `sitemap.xml` and `robots.txt`. Before, the crawler got an empty page and `/sitemap.xml` returned a 404
+- JSON-LD structured data (an `ItemList` of investment projects), `sitemap.xml` and `robots.txt`
 
 **Real-time search**
 - Debounced input (300ms) querying the API with a `?q=` parameter
