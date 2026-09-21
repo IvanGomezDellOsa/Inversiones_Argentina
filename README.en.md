@@ -125,35 +125,6 @@ Unique records are persisted with their embedding and published to the Telegram 
 
 ---
 
-## 🔧 Getting started
-
-```bash
-cp .env.example .env    # fill in credentials
-pip install -r api/requirements.txt
-npm install
-
-python api/ingesta.py   # run the full pipeline once
-npm run dev             # frontend on localhost:3000
-```
-
-Each module under `api/` runs standalone to diagnose a single source:
-
-```bash
-python api/scraper.py        # what X returns
-python api/fuentes_web.py    # what the RSS feeds return
-python api/fuentes_rigi.py   # what the official registry returns
-python api/relevancia.py     # relevance-filter test
-python api/jev.py            # Jev test (if configured)
-```
-
----
-
-## 📝 Development Notes
-
-LLM-assisted development for component scaffolding, animation code and boilerplate. The decisions that actually define the product — the AI pipeline design, the deduplication strategy, the ingestion architecture, the prompt design with its exclusions, the choice of sources and thresholds, and the integration of Google Search Grounding as a second data source — were made and orchestrated by me.
-
----
-
 ## 👤 Author
 
 **Iván Gómez Dell'Osa**

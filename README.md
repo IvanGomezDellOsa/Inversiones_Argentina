@@ -125,35 +125,6 @@ Los registros únicos se persisten con su embedding y se publican en simultáneo
 
 ---
 
-## 🔧 Puesta en marcha
-
-```bash
-cp .env.example .env    # completar credenciales
-pip install -r api/requirements.txt
-npm install
-
-python api/ingesta.py   # corre el flujo completo una vez
-npm run dev             # frontend en localhost:3000
-```
-
-Cada módulo de `api/` se puede correr solo para diagnosticar una fuente:
-
-```bash
-python api/scraper.py        # qué trae X
-python api/fuentes_web.py    # qué traen los RSS
-python api/fuentes_rigi.py   # qué trae el registro oficial
-python api/relevancia.py     # test del filtro de relevancia
-python api/jev.py            # test de Jev (si está configurado)
-```
-
----
-
-## 📝 Notas de Desarrollo
-
-Desarrollo asistido por LLMs para maquetación de componentes, escritura de animaciones y generación de código boilerplate. Las decisiones que definen el producto —diseño del flujo de IA, estrategia de deduplicación, arquitectura de la ingesta, diseño del prompt con sus exclusiones, elección de fuentes y de umbrales, y la integración de Google Search Grounding como segunda fuente— fueron tomadas y orquestadas por mí.
-
----
-
 ## 👤 Autor
 
 **Iván Gómez Dell'Osa**
