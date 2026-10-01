@@ -4,6 +4,7 @@
 
 🌐 **Deploy en producción:** [inversionesargentina.com.ar](https://inversionesargentina.com.ar)
 📢 **Canal de Telegram:** [t.me/inversiones_en_argentina](https://t.me/inversiones_en_argentina)
+🎬 **Video:** [Ver en YouTube](https://youtu.be/aFhefFVcW4M)
 
 Agregador web automatizado que recopila, estructura y lista inversiones privadas realizadas o anunciadas en Argentina. El sistema combina el registro oficial RIGI, cuentas especializadas de X, feeds RSS de medios de distintos rubros y búsqueda en Google vía IA generativa, y expone los datos a través de una API REST hacia un frontend en forma de cronología interactiva. Cada 72 horas, las nuevas inversiones detectadas se publican automáticamente tanto en la web como en el canal de Telegram.
 

@@ -4,6 +4,7 @@
 
 🌐 **Production deploy:** [inversionesargentina.com.ar](https://inversionesargentina.com.ar)
 📢 **Telegram channel:** [t.me/inversiones_en_argentina](https://t.me/inversiones_en_argentina)
+🎬 **Video:** [Watch on YouTube](https://youtu.be/aFhefFVcW4M)
 
 Automated web aggregator that collects, structures and lists private investments made or announced in Argentina. It combines the official RIGI registry, specialised X accounts, RSS feeds from outlets across different sectors, and Google search via generative AI, exposing the data through a REST API to a frontend that renders an interactive timeline. Every 72 hours, newly detected investments are published automatically to both the website and the Telegram channel.
 
