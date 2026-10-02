@@ -3,6 +3,8 @@ import json
 import time
 import logging
 from datetime import datetime, timedelta
+
+import httpx
 from google import genai
 from google.genai import errors as genai_errors
 from google.genai.types import GenerateContentConfig, Tool, GoogleSearch, HttpOptions
@@ -83,18 +85,19 @@ Schema del Array JSON de salida:
 
 
 def procesar_con_gemini(tweets_lista):
+    """Devuelve la lista extraída, [] si Gemini no halló nada, o None si falló."""
     if not GEMINI_API_KEY:
         logger.error("Falta la variable de entorno GEMINI_API_KEY")
-        return []
+        return None
 
     client = get_client()
     if not client:
-        return []
+        return None
     prompt = construir_prompt(tweets_lista)
 
     logger.info("Enviando prompt a Gemini 2.5 Flash con Grounding activado...")
     try:
-        # Los 503 por alta demanda son transitorios: reintentar antes de perder el ciclo de 72hs
+        # Los 503 y los cortes de conexión son transitorios: reintentar antes de perder el ciclo de 72hs
         intentos_maximos = 4
         espera_segundos = 30
         for intento in range(1, intentos_maximos + 1):
@@ -108,11 +111,11 @@ def procesar_con_gemini(tweets_lista):
                     )
                 )
                 break
-            except genai_errors.ServerError as se:
+            except (genai_errors.ServerError, httpx.TransportError) as se:
                 if intento == intentos_maximos:
                     raise
                 logger.warning(
-                    f"Gemini devolvió un error de servidor (intento {intento}/{intentos_maximos}): {se}. "
+                    f"Gemini falló de forma transitoria (intento {intento}/{intentos_maximos}): {se}. "
                     f"Reintentando en {espera_segundos}s..."
                 )
                 time.sleep(espera_segundos)
@@ -128,7 +131,7 @@ def procesar_con_gemini(tweets_lista):
             array_json = json.loads(texto_limpio)
             if not isinstance(array_json, list):
                 logger.error("Gemini no devolvió una lista JSON.")
-                return []
+                return None
             if len(array_json) == 0:
                 logger.warning("Gemini devolvió un array JSON vacío.")
                 return []
@@ -137,13 +140,13 @@ def procesar_con_gemini(tweets_lista):
         except json.JSONDecodeError as de:
             logger.error(f"JSONDecodeError: {de}")
             logger.error(f"Texto crudo completo:\n{texto_crudo}")
-            return []
+            return None
 
     except Exception as e:
         import traceback
         logger.error(f"Fallo en la comunicación con el servicio de API Google Gemini: {e}")
         logger.error(traceback.format_exc())
-        return []
+        return None
 
 if __name__ == "__main__":
     tweets_prueba = [
@@ -152,4 +155,4 @@ if __name__ == "__main__":
     ]
 
     resultados = procesar_con_gemini(tweets_prueba)
-    print(json.dumps(resultados, indent=2, ensure_ascii=False))
+    print(json.dumps(resultados or [], indent=2, ensure_ascii=False))

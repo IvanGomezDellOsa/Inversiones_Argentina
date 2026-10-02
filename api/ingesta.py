@@ -240,8 +240,15 @@ def run_ingesta():
         inversiones_crudo = procesar_con_gemini(publicaciones)
         metricas["Extraídas por Gemini"] = len(inversiones_crudo or [])
 
+        # None = Gemini falló (se pierde el ciclo); [] = respondió sin hallazgos.
+        estado["Gemini"] = {
+            "items": len(inversiones_crudo or []),
+            "ok": inversiones_crudo is not None,
+            "detalle": "extracción y búsqueda en Google",
+        }
+
         if not inversiones_crudo:
-            logger.warning("Gemini no devolvió resultados o hubo un error al parsear.")
+            logger.warning("Gemini no devolvió resultados.")
             _imprimir_parte(estado, metricas)
             return 0 if all(d["ok"] for d in estado.values()) else 1
 
